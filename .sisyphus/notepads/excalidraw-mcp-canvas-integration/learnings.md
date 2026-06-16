@@ -122,3 +122,56 @@ Extracted `dispatchCanvasTool` into its own pure module. Rationale: testable wit
 - `.sisyphus/spikes/02-bun-runtime.md` (full report)
 - `.sisyphus/evidence/task-2-bun-tools-list.json` (raw tools/list response)
 - `.sisyphus/evidence/task-2-export-to-image-hangs.txt` (negative test)
+
+
+## [2026-06-16] Task T3 — captureUpdate contract (SPIKE COMPLETE)
+
+### Verdict
+**Use `captureUpdate` API.** No custom undo grouping needed at canvas-store
+layer. Full report: `.sisyphus/spikes/03-captureUpdate.md`.
+
+### Enum contract (Excalidraw 0.18.1)
+- Import: `import { CaptureUpdateAction } from '@excalidraw/excalidraw'`
+  (runtime value, publicly re-exported at
+  `dist/types/excalidraw/index.d.ts` L23).
+- Three values, wire strings = symbol names:
+  - `IMMEDIATELY` → `store.captureIncrement()` → ONE new undo entry.
+  - `NEVER` → `store.updateSnapshot()` → snapshot silently advances, NO entry.
+  - `EVENTUALLY` → gated out at `App.updateScene` L25935 → no store
+    interaction at all; deferred to next `IMMEDIATELY`.
+- **Foot-gun:** an absent / `undefined` `captureUpdate` field is treated
+  exactly like `EVENTUALLY` (gated out). Wave 4 code must always pass an
+  explicit value. Lint rule candidate.
+- `SceneData` field declared at
+  `dist/types/excalidraw/types.d.ts` L464-469 as
+  `captureUpdate?: CaptureUpdateActionType`.
+
+### Coalescing pattern for T17
+`N-1` calls with `NEVER` + 1 final call with `IMMEDIATELY` collapses
+the whole batch into a single undo step. Batch of size 1 = just
+`IMMEDIATELY`. Batch of size 0 = no `updateScene` call at all.
+
+### Interleaving edge case (informs T22)
+If a user `IMMEDIATELY` lands between an in-flight batch's `NEVER`s and
+its final flush, elements absorbed by the prior `NEVER`s are baked into
+the snapshot baseline and become un-undoable (per Excalidraw's documented
+"never recorded" semantics). T22 must enforce mutual exclusion (lock the
+canvas while a batch is in flight). Fallback: switch intermediates from
+`NEVER` to `EVENTUALLY` — no silent loss but the batch fragments into
+multiple undo entries. Recommended primary = lock; secondary = feature-
+flagged fragmentation. Full table in
+`.sisyphus/evidence/task-3-interleaving.txt`.
+
+### Jan's current usage (snapshot)
+- Zero call sites of `captureUpdate` or `updateScene` in `web-app/src`.
+- Three docstring-only mentions: `CanvasEditor.tsx:66`, `types/canvas.ts:31`,
+  `stores/canvas-store.ts:57`. All are comments documenting the future
+  contract, not actual function calls.
+- `useCanvasAutoSave.ts` exists but does not touch `updateScene` either —
+  it reads via Excalidraw's `onChange` callback and writes to the store.
+
+### Imperative API caveat
+`ExcalidrawImperativeAPI.history` only exposes `clear` (`dist/types/excalidraw/types.d.ts`
+L608-610). There is NO public `undo()` / `redo()` method. QA for T17/T22
+must trigger undo via keyboard events (`Ctrl/Cmd+Z`) or via
+`registerAction(...)`. Document this when writing the Playwright tests.
