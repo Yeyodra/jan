@@ -28,6 +28,16 @@ import { MasterPromptInput } from '@/components/compare/MasterPromptInput'
 import { CompareGrid } from '@/components/compare/CompareGrid'
 import { CompareColumn } from '@/components/compare/CompareColumn'
 import AttachmentIngestionDialog from '@/containers/dialogs/AttachmentIngestionDialog'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.compare as any)({
@@ -56,6 +66,13 @@ export function ComparePage() {
   // T16 a11y: global polite announcement region for column status transitions
   const [announcement, setAnnouncement] = useState('')
   const prevStatusesRef = useRef<Record<string, string>>({})
+
+  // Bug 14: shadcn Dialog confirmation when removing a column with messages.
+  // null = closed; non-null = pending removal awaiting user confirmation.
+  const [removeTarget, setRemoveTarget] = useState<{
+    providerId: string
+    modelId: string
+  } | null>(null)
 
   useEffect(() => {
     const next: Record<string, string> = {}
@@ -108,14 +125,22 @@ export function ComparePage() {
         (c) => c.provider.provider === providerId && c.modelId === modelId
       )
       if (col && col.messages.length > 0) {
-        // Native confirm for v1; can swap to AlertDialog later without changing the call shape.
-        const ok = window.confirm(t('removeColumnConfirm'))
-        if (!ok) return
+        // Defer removal — show modal, let user confirm
+        setRemoveTarget({ providerId, modelId })
+        return
       }
+      // Empty column — remove immediately, no confirmation needed
       removeModel(providerId, modelId)
     },
-    [columns, removeModel, t]
+    [columns, removeModel]
   )
+
+  const handleConfirmRemove = useCallback(() => {
+    if (removeTarget) {
+      removeModel(removeTarget.providerId, removeTarget.modelId)
+      setRemoveTarget(null)
+    }
+  }, [removeTarget, removeModel])
 
   return (
     <div className="flex flex-col h-svh overflow-hidden bg-background">
@@ -186,6 +211,36 @@ export function ComparePage() {
         does — no Compare-specific dispatch wiring required.
       */}
       <AttachmentIngestionDialog />
+
+      {/* Bug 14: shadcn Dialog replaces window.confirm() for column removal */}
+      <Dialog
+        open={removeTarget !== null}
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>{t('compare:removeColumn')}</DialogTitle>
+            <DialogDescription>
+              {t('compare:removeColumnConfirm')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" size="sm">
+                {t('common:cancel', { defaultValue: 'Cancel' })}
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={handleConfirmRemove}
+            >
+              {t('compare:removeColumn')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
