@@ -45,3 +45,22 @@
 **Trade-off accepted:** The approval-gate predicate `isAutoApproved` is duplicated between `$threadId.tsx` (production) and `dispatch.test.ts` (test). To catch drift, the test suite includes a "mutatingToolNames" sanity assertion (`expect([...mutatingToolNames].sort()).toEqual([create, delete, update])`) that fires if anyone reorders the canonical set without updating the test. Acceptable for v1; if the predicate grows beyond a one-liner, extract it into the same `dispatch.ts` module.
 
 **Commit:** `fix(canvas): wire T18 canvas tools into thread dispatcher` (atomic, single commit per task spec §5).
+
+## T5 — Vendor mcp_excalidraw at c12ff87f (2026-06-16)
+
+- **Decision**: Do NOT vendor `node_modules/`. Defer install to Tauri build hook (T11).
+  - **Rationale**: Full `node_modules` is ~hundreds of MB of mostly devDeps. Runtime
+    needs only a subset of `dependencies` which the build hook can `npm ci` on-demand.
+    Vendoring would balloon repo size + violate the project's repo-size hygiene.
+  - **Tradeoff**: T11 must succeed reliably or sidecar won't launch. Mitigated by
+    SHA-256 verification of `dist/index.js` in UPSTREAM.md (contract for T11).
+- **Decision**: Keep upstream's `.gitignore` intact (vendor as-is) and use `git add -f`
+  for files it excludes (`dist/`, `package-lock.json`, `.dockerignore`, etc).
+  - **Rationale**: Modifying upstream files breaks the "vendor as-is for upstream parity"
+    rule. `git add -f` is the canonical vendoring workaround.
+- **Decision**: Refactor root `.gitignore` line 66 from blanket `src-tauri/resources/`
+  to explicit subpaths (`src-tauri/resources/lib`; `bin`/`pre-install`/`icons` already
+  listed earlier). Reason: blanket directory ignore makes child negations impossible per
+  gitignore semantics, blocking future vendored sidecars.
+- **Pinned dist SHA-256**: `DC1E55ED8C1CB2E2354794C8FDE34A707D3B6E9E824C617C949B550106EFA0BC`
+- **Vendored file count**: 211 files
