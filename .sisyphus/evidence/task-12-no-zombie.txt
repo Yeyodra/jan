@@ -1,0 +1,7 @@
+# T12 evidence: bun zombie check after test_excalidraw_spawn_lifecycle
+Timestamp: 2026-06-17T05:37:01Z
+Method: Get-CimInstance Win32_Process -Filter Name='bun.exe' | Where CommandLine -like '*mcp_excalidraw*' (CIM exposes CommandLine without admin on this host).
+Per-PID probe inside test asserted child_pid DEAD via Get-Process -Id (see spawn-test.log: 'pid-probe: DEAD').
+mcp_excalidraw_bun_count: 0
+total_bun_processes_on_host: 4 (unrelated to this test — e.g. opencode, other dev tools)
+STATUS: PASS

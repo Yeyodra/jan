@@ -1,0 +1,6 @@
+# T12 evidence: env propagation through bun child process
+Timestamp: 2026-06-17T05:36:40Z
+Source: .sisyphus/evidence/task-12-spawn-test.log (cargo test --nocapture)
+env-probe-stderr: {"CANVAS_SYNC":"false","sentinel":"t12-2026-06-17"}
+env-pass: ENABLE_CANVAS_SYNC=false JAN_T12_SENTINEL=t12-2026-06-17
+STATUS: PASS

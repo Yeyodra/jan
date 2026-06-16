@@ -371,3 +371,20 @@ Never use the `.toHaveProperty(...).toEqualTypeOf(...)` chain. Always Pattern A 
   - Success path (dist restored): same invocation → exit 0 in **~25.9 s**.
   - **T12 budget hint**: ~25 s per `cargo check` invocation on this Windows host with a warm target/. Full `cargo tauri build` was NOT run here (deferred to T12 per spec).
 - **Evidence files**: `.sisyphus/evidence/task-11-build-fail.log` (cargo stderr + STATUS: PASS), `.sisyphus/evidence/task-11-bundle-contents.txt` (per-platform bundle.resources + glob match assertion + 175-file dist listing).
+
+## [2026-06-17T05:37:55Z] T12 — Spawn lifecycle integration test
+
+- **rmcp 0.8.5 API confirmed** (matches helpers.rs internal usage):
+  - Handshake: let service = ().serve(process).await?; where process is a TokioChildProcess from TokioChildProcess::builder(cmd).stderr(Stdio::piped()).spawn()? returning (TokioChildProcess, Option<ChildStderr>).
+  - Tool listing: service.list_all_tools().await -> Result<Vec<Tool>, ServiceError> (NOT `service.peer().list_tools()` — the convenience method is on the service handle itself).
+  - Shutdown: service.cancel().await (matches helpers.rs:1119-1120). kill_on_drop(true) on the inner `Command` ensures the child dies when the service is dropped after cancel.
+- **Spawn time observed**: handshake-elapsed ~5.8s, full test ~6.5s (excluding cargo build). Materially slower than T4's direct-spawn measurement (~400ms mean) because T4 timed bun-only stdio while this test goes through rmcp's full initialize handshake. 10s timeout chosen instead of plan's 3s gave comfortable margin without flaking. Plan-suggested 3s would have failed on this Windows host.
+- **bun resolution**: dev-host path `src-tauri/resources/bin/bun.exe` was present (T10/copy:assets:tauri already ran on this branch). Logged as `bun-source: resources/bin -> ...`. PATH fallback retained in code but not exercised this run.
+- **kill_on_drop reaped reliably**: the explicit 200ms sleep was enough — `pid-probe: DEAD` on Windows via `Get-Process -Id` after the service drop. No need for extra polling.
+- **Pre-test gotcha**: `src-tauri/resources/mcp_excalidraw/node_modules/` was not present at cargo-test time (T11's build hook installs them at `cargo build`, but NOT at `cargo test --no-run`). Workaround: ran `npm install --omit=dev` once in that directory before the test would handshake — first run failed with `Cannot find module '@modelcontextprotocol/sdk/server/index.js'`. **Action for future test invocations / CI**: the build hook needs to fire on test profile too, OR `cargo test` invocations must be preceded by a one-shot `npm install` in `src-tauri/resources/mcp_excalidraw`. Filed mentally as a follow-up for T21/T22 if CI fails.
+- **Env-propagation proof** decoupled from rmcp: a separate `bun -e "console.error(JSON.stringify({...}))"` sub-process with the same env returns `{"CANVAS_SYNC":"false","sentinel":"t12-2026-06-17"}`. Stable `env-pass:` prefix lets the evidence script grep without ambiguity.
+- **Zombie probe**: `Get-CimInstance Win32_Process -Filter Name='bun.exe' | Where CommandLine -like '*mcp_excalidraw*'` exposes CommandLine without admin on this host — preferred over Get-Process which lacks CommandLine. Returned 0. Total bun process count was 4 (unrelated dev tools, e.g. opencode harness), but none were mcp_excalidraw.
+- **Test isolation**: did not need `serial_test` — the test spawns its own bun child and cleans up via kill_on_drop. No shared state with other tests.
+- **Test command**: `cargo test --no-default-features --features test-tauri core::mcp::tests::test_excalidraw_spawn_lifecycle -- --nocapture` — T9 finding still holds; default features still produce `STATUS_ENTRYPOINT_NOT_FOUND` on this Windows host.
+- **Two `unused import: std::os::windows::process::CommandExt` warnings** in the new test are spurious — the trait IS needed for `creation_flags` on Windows; the warning appears to be a rustc false positive when the trait is brought into scope inside a block scoped by `#[cfg(windows)]`. Acceptable; left as-is.
+

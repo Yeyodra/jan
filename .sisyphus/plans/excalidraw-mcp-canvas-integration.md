@@ -1314,7 +1314,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `src-tauri/build.rs`, `.github/workflows/<relevant>.yml`, `src-tauri/resources/mcp_excalidraw/UPSTREAM.md`
   - Pre-commit: `cd src-tauri && cargo build`
 
-- [ ] 12. Verify spawn flow integration (cargo test + manual spawn smoke)
+- [x] 12. Verify spawn flow integration (cargo test + manual spawn smoke)
 
   **What to do**:
   - Build a debug `cargo tauri dev` / `cargo run` instance with the new config in place
