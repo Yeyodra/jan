@@ -1,0 +1,49 @@
+﻿=== T13 Skeleton Evidence ===
+Generated: 2026-06-17T05:46:28.9378316+07:00
+Source:    web-app\src\lib\canvas-mcp-orchestrator\index.ts
+
+11 responsibilities (method -> implementing task):
+  [OK] resolveActiveCanvas        -> T14 (plan 1480)
+  [OK] dispatchToolCall           -> T15 (plan 1569)
+  [OK] translateElementId         -> T16 (plan 1658)
+  [OK] syncStateFromCanvas        -> T14 (plan 1480)
+  [OK] beginAiBatch               -> T17 (plan 1733)
+  [OK] endAiBatch                 -> T17 (plan 1733)
+  [OK] handleProcessCrash         -> T14 (plan 1480)
+  [OK] translateToolResult        -> T16 (plan 1658)
+  [OK] applyTheme                 -> T14 (plan 1480)
+  [OK] lockManualEdits            -> T22 (plan 2180)
+  [OK] enforceCuratedToolList     -> T13 (this file)
+
+=== bun test output ===
+
+bun test v1.3.14 (0d9b296a)
+System.Management.Automation.RemoteException
+web-app\src\lib\canvas-mcp-orchestrator\index.test.ts:
+(pass) CanvasMcpOrchestrator ΓÇö construction > constructs with a minimal deps bag [0.49ms]
+(pass) CanvasMcpOrchestrator ΓÇö construction > defaults telemetry to NoopTelemetry when omitted [0.09ms]
+(pass) CanvasMcpOrchestrator ΓÇö construction > exposes ALL 11 responsibilities as functions on the instance [0.14ms]
+(pass) CanvasMcpOrchestrator ΓÇö construction > reflection: prototype owns exactly the 11 responsibility methods [0.56ms]
+(pass) CanvasMcpOrchestrator ΓÇö construction > self-check throws when a required method is missing [0.43ms]
+(pass) CanvasMcpOrchestrator ΓÇö TODO throwers > resolveActiveCanvas() throws a TODO error referencing T14 [0.55ms]
+(pass) CanvasMcpOrchestrator ΓÇö TODO throwers > dispatchToolCall() throws a TODO error referencing T15 [0.15ms]
+(pass) CanvasMcpOrchestrator ΓÇö TODO throwers > translateElementId() throws a TODO error referencing T16 [0.09ms]
+(pass) CanvasMcpOrchestrator ΓÇö TODO throwers > syncStateFromCanvas() throws a TODO error referencing T14 [0.12ms]
+(pass) CanvasMcpOrchestrator ΓÇö TODO throwers > beginAiBatch() throws a TODO error referencing T17 [0.08ms]
+(pass) CanvasMcpOrchestrator ΓÇö TODO throwers > endAiBatch() throws a TODO error referencing T17 [0.11ms]
+(pass) CanvasMcpOrchestrator ΓÇö TODO throwers > handleProcessCrash() throws a TODO error referencing T14 [0.13ms]
+(pass) CanvasMcpOrchestrator ΓÇö TODO throwers > translateToolResult() throws a TODO error referencing T16 [0.10ms]
+(pass) CanvasMcpOrchestrator ΓÇö TODO throwers > applyTheme() throws a TODO error referencing T14 [0.09ms]
+(pass) CanvasMcpOrchestrator ΓÇö TODO throwers > lockManualEdits() throws a TODO error referencing T22 [0.07ms]
+(pass) CanvasMcpOrchestrator ΓÇö enforceCuratedToolList > filters out blocked tools (export_to_image) and keeps allowed ones [0.31ms]
+(pass) CanvasMcpOrchestrator ΓÇö enforceCuratedToolList > returns an empty array when given an empty array [0.06ms]
+(pass) CanvasMcpOrchestrator ΓÇö enforceCuratedToolList > drops unknown tools (closed allow-list) [0.07ms]
+(pass) CanvasMcpOrchestrator ΓÇö decoupling > does not reach into deps.canvasStore or deps.mcpClient at construction [0.15ms]
+(pass) CanvasMcpOrchestrator ΓÇö decoupling > does not import React, zustand, or Excalidraw at module load [9.43ms]
+System.Management.Automation.RemoteException
+ 20 pass
+ 0 fail
+ 61 expect() calls
+Ran 20 tests across 1 file. [185.00ms]
+
+STATUS: PASS

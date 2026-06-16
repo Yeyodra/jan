@@ -388,3 +388,52 @@ Never use the `.toHaveProperty(...).toEqualTypeOf(...)` chain. Always Pattern A 
 - **Test command**: `cargo test --no-default-features --features test-tauri core::mcp::tests::test_excalidraw_spawn_lifecycle -- --nocapture` — T9 finding still holds; default features still produce `STATUS_ENTRYPOINT_NOT_FOUND` on this Windows host.
 - **Two `unused import: std::os::windows::process::CommandExt` warnings** in the new test are spurious — the trait IS needed for `creation_flags` on Windows; the warning appears to be a rustc false positive when the trait is brought into scope inside a block scoped by `#[cfg(windows)]`. Acceptable; left as-is.
 
+
+## [2026-06-16T22:47:11.2528266Z] T13 — Orchestrator skeleton
+
+**File:** `web-app/src/lib/canvas-mcp-orchestrator/index.ts`
+**Tests:** 20 pass / 0 fail (`index.test.ts`); 78 pass across all 3 sibling files.
+
+### JSDoc class-header (grep anchor)
+
+> Skeleton orchestrator. See file header for full responsibility table.
+> Construct with `new CanvasMcpOrchestrator(deps)`. The constructor runs a
+> runtime self-check against `OrchestratorResponsibility` and throws if any
+> of the 11 required methods is missing on the instance.
+
+### Method ↔ implementing-task mapping
+
+| Method                  | Task | Plan § |
+|-------------------------|------|--------|
+| resolveActiveCanvas     | T14  | 1480   |
+| dispatchToolCall        | T15  | 1569   |
+| translateElementId      | T16  | 1658   |
+| syncStateFromCanvas     | T14  | 1480   |
+| beginAiBatch            | T17  | 1733   |
+| endAiBatch              | T17  | 1733   |
+| handleProcessCrash      | T14  | 1480   |
+| translateToolResult     | T16  | 1658   |
+| applyTheme              | T14  | 1480   |
+| lockManualEdits         | T22  | 2180   |
+| enforceCuratedToolList  | T13  | 1396 (REAL one-line impl) |
+
+### Deferred-typing decisions (refine in T14–T17)
+
+- `deps.canvasStore: unknown` — T14 will narrow to a slice of `useCanvasStore` (zustand). Skeleton keeps `unknown` so vitest does NOT pull React/zustand into the module graph (decoupling assertion test enforces this).
+- `deps.mcpClient: unknown` — T15 will narrow to the transport that ships with mcp_excalidraw at wiring time.
+- `deps.themeProvider?: unknown` — T13.x / T14 once the theme contract is final.
+- `CanvasMutation = unknown` — T16 owns the discriminated-union design.
+- `ExcalidrawElement = unknown` — T14 owns the theme-provider work; pulling Excalidraw runtime types here would couple T13 to T14.
+- `BatchToken` is a branded `symbol` — opaque token, intentionally narrow so T17 can replace internals without touching callers.
+
+### Naming-collision note
+
+`types.ts` already exports `Telemetry` (a per-session aggregate snapshot: `toolCallCount`, `errors[]`, …). The skeleton needed a push-style sink (`increment`/`timing`) and could not reuse the name without breaking the aggregate. Resolution: `TelemetrySink` lives in `index.ts` alongside `NoopTelemetry`. T14–T17 may unify the two once the relationship is clearer.
+
+### Self-check (plan §1465)
+
+Constructor iterates `Object.keys(OrchestratorResponsibility)` and asserts each name resolves to `typeof === 'function'` on the instance. Subclass-deletes-method test confirms the check fires at construction. Skeleton-exposes-all-11 invariant is now executable, not just documented.
+
+### Curated-tool gate from day one
+
+`enforceCuratedToolList` is the ONE method with a real (one-line) implementation: `return filterAllowedTools(tools)`. This proves the skeleton is wirable end-to-end and lets T14–T17 trust the allow-list gate without re-implementing it.

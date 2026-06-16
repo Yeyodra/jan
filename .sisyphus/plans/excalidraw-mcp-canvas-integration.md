@@ -1393,7 +1393,7 @@ Max Concurrent: 5 (Wave 4)
 
 ### Wave 4 — CanvasMcpOrchestrator (Bridge with 11 Responsibilities)
 
-- [ ] 13. CanvasMcpOrchestrator skeleton + 11 responsibilities stubs
+- [x] 13. CanvasMcpOrchestrator skeleton + 11 responsibilities stubs
 
   **What to do**:
   - Create `web-app/src/lib/canvas-mcp-orchestrator/index.ts` with a `CanvasMcpOrchestrator` class (or factory function) exposing methods covering the 11 responsibilities verbatim:
