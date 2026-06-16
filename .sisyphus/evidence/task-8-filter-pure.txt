@@ -1,0 +1,66 @@
+﻿bun test v1.3.14 (0d9b296a)
+bun : 
+At line:1 char:1
++ bun test src/lib/canvas-mcp-orchestrator/curated-tools.test.ts 2>&1 | ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+src\lib\canvas-mcp-orchestrator\curated-tools.test.ts:
+(pass) curated-tools ΓÇö set invariants > EXCALIDRAW_ALLOWED_TOOLS has exactly 24 entries [0.07ms]
+(pass) curated-tools ΓÇö set invariants > EXCALIDRAW_BLOCKED_TOOLS has exactly 2 entries [0.03ms]
+(pass) curated-tools ΓÇö set invariants > |allowed| + |blocked| === 26 (canonical tools/list count) [0.03ms]
+(pass) curated-tools ΓÇö set invariants > allowed Γê⌐ blocked === Γêà [0.18ms]
+(pass) curated-tools ΓÇö set invariants > mutating Γèé allowed [0.09ms]
+(pass) curated-tools ΓÇö set invariants > readonly Γèé allowed [0.06ms]
+(pass) curated-tools ΓÇö set invariants > mutating Γê⌐ readonly === Γêà [0.07ms]
+(pass) curated-tools ΓÇö set invariants > |mutating| + |readonly| === |allowed| (partition) [0.03ms]
+(pass) curated-tools ΓÇö cross-reference vs canonical T2 source list > canonical source list has exactly 26 tool names 
+[0.03ms]
+(pass) curated-tools ΓÇö cross-reference vs canonical T2 source list > (allowed Γê¬ blocked) === canonical 26-name 
+source set [0.17ms]
+(pass) curated-tools ΓÇö filterAllowedTools() > returns exactly 24 entries when given the canonical 26-tool list 
+[0.18ms]
+(pass) curated-tools ΓÇö filterAllowedTools() > strips every name in EXCALIDRAW_BLOCKED_TOOLS [0.61ms]
+(pass) curated-tools ΓÇö filterAllowedTools() > keeps every name in EXCALIDRAW_ALLOWED_TOOLS [0.19ms]
+(pass) curated-tools ΓÇö filterAllowedTools() > drops unknown tools (closed allow-list, fail-closed) [0.09ms]
+(pass) curated-tools ΓÇö filterAllowedTools() > preserves input order of kept tools [0.08ms]
+(pass) curated-tools ΓÇö filterAllowedTools() > is pure: does not mutate input array length or contents [0.15ms]
+(pass) curated-tools ΓÇö filterAllowedTools() > is pure: two invocations with the same input return deep-equal output 
+[0.10ms]
+(pass) curated-tools ΓÇö filterAllowedTools() > returns a NEW array (not the same reference as input) [0.36ms]
+(pass) curated-tools ΓÇö filterAllowedTools() > returns an empty array given an empty input [0.06ms]
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'create_element' [0.05ms]
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'update_element'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'delete_element'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'batch_create_elements'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'duplicate_elements'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'clear_canvas'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'import_scene'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'create_from_mermaid'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'align_elements'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'distribute_elements'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'group_elements'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'ungroup_elements'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'lock_elements'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'unlock_elements'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'export_scene'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'snapshot_scene'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'restore_snapshot'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'export_to_excalidraw_url'
+(pass) curated-tools ΓÇö requiresApproval() > returns true for mutating tool 'set_viewport'
+(pass) curated-tools ΓÇö requiresApproval() > returns false for readonly tool 'query_elements' [0.02ms]
+(pass) curated-tools ΓÇö requiresApproval() > returns false for readonly tool 'get_element'
+(pass) curated-tools ΓÇö requiresApproval() > returns false for readonly tool 'get_resource'
+(pass) curated-tools ΓÇö requiresApproval() > returns false for readonly tool 'describe_scene'
+(pass) curated-tools ΓÇö requiresApproval() > returns false for readonly tool 'read_diagram_guide'
+(pass) curated-tools ΓÇö requiresApproval() > returns false for an unknown tool name (fail-closed lives in the filter, 
+not the gate) [0.02ms]
+(pass) curated-tools ΓÇö requiresApproval() > returns false for the empty string [0.02ms]
+(pass) curated-tools ΓÇö requiresApproval() > returns false for blocked tool names (they should have been filtered out 
+upstream, but the gate is conservative) [0.05ms]
+
+ 46 pass
+ 0 fail
+ 102 expect() calls
+Ran 46 tests across 1 file. [85.00ms]

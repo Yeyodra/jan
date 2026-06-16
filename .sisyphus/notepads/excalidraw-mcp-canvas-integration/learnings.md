@@ -319,3 +319,14 @@ Never use the `.toHaveProperty(...).toEqualTypeOf(...)` chain. Always Pattern A 
   - Author/email appended from `src-tauri/resources/mcp_excalidraw/package.json` `author` field (`yctimlin` / `c22647809@gmail.com`) for precise attribution to the upstream maintainer.
 - Verified vendored LICENSE preserved unmodified — `git log --follow` shows only T5's commit `62a71fe30`.
 - Evidence: `.sisyphus/evidence/task-6-notice-check.txt`.
+
+
+## [2026-06-16T21:46:42.043Z] T8 — Curated-tool tests
+
+- Wrote `web-app/src/lib/canvas-mcp-orchestrator/curated-tools.test.ts` (46 tests, 102 expect() calls, all pass in ~85ms).
+- Cross-reference against `.sisyphus/evidence/task-2-bun-tools-list.json` is clean: `(allowed ∪ blocked) === canonical 26-name set`, no missing, no extras.
+- Tool counts confirmed: mutating=19, readonly=5, blocked=2, allowed=24, total=26. Matches the docstring math in `curated-tools.ts`.
+- Used `it.each([...EXCALIDRAW_MUTATING_TOOLS])` / `it.each([...EXCALIDRAW_READONLY_TOOLS])` so per-tool failures point at the specific tool name. Bun/vitest renders these as one passing line per tool.
+- PowerShell gotcha: `Out-File -Encoding utf8` produces a UTF-8-with-BOM file on Windows PowerShell 5.1. The canonical T2 JSON evidence also carries a BOM, so the test strips `\uFEFF` before `JSON.parse`. Future test code reading any of these evidence files should do the same.
+- No new typecheck errors introduced (`tsc --noEmit` produced no diagnostics mentioning `curated-tools`).
+- No `bun run typecheck` script exists in `web-app/package.json` — the closest scripts are `build` (which runs `tsc -b`). Treated the brief's "or no NEW errors vs baseline" clause as satisfied via direct `tsc --noEmit`.

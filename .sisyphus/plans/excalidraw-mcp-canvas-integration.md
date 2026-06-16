@@ -516,7 +516,7 @@ Max Concurrent: 5 (Wave 4)
 
   T1's static verification found that while the T18 tool authoring (`lib/canvas/ai-tools.ts`) and registry projection (`useTools.ts` + `useAppState.ts`) layers were correct, the thread-route dispatcher (`web-app/src/routes/threads/$threadId.tsx`) never read `canvasToolNames` and had no routing branch for canvas tool calls — any LLM-emitted `canvas_*` call would return `Tool 'canvas_…' not found in any service`. A secondary defect in the same dispatcher would have force-prompted approval modals for read-only `canvas_list`/`canvas_read`. T1.5 closed both gaps: extracted a pure helper `web-app/src/lib/canvas/dispatch.ts` that marshals canvas-handler returns into `MCPToolCallResult`, wired it into the dispatcher behind a `canvasToolNames.has(toolName)` branch, and extended the approval predicate to auto-approve read-only canvas tools while keeping `mutatingToolNames` gated. Coverage: 11 new vitest cases in `dispatch.test.ts` (all green); existing T18 (19) and useTools (7) tests still green; typecheck/lint clean on changed files. Full re-verification appended to `tests/manual/t18-tools-verification.md` §8. **Wave 2 is now unblocked from the dispatcher side**; only the real-LLM end-to-end run remains (T1-rerun), which the original T1 task spec defers when env blockers exist.
 
-- [ ] 2. bun runtime spike — confirm dist/index.js executes via bun
+- [x] 2. bun runtime spike — confirm dist/index.js executes via bun
 
   **What to do**:
   - Outside Jan, in a scratch dir, clone mcp_excalidraw at SHA `c12ff87f6d607ccac7b217ae415bee8d855a067e`
@@ -606,7 +606,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `.sisyphus/spikes/02-bun-runtime.md`, `.sisyphus/evidence/task-2-*`
   - Pre-commit: none (markdown only)
 
-- [ ] 3. Excalidraw captureUpdate history-coalescing API spike
+- [x] 3. Excalidraw captureUpdate history-coalescing API spike
 
   **What to do**:
   - Goal: prove that ALL elements created by an AI batch can be coalesced into ONE undo step
@@ -696,7 +696,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `.sisyphus/spikes/03-captureUpdate.md`, `.sisyphus/evidence/task-3-*`
   - Pre-commit: none
 
-- [ ] 4. First-spawn latency measurement spike
+- [x] 4. First-spawn latency measurement spike
 
   **What to do**:
   - Measure: time from "user pencet send" → "first MCP tool call resolves" for the FIRST invocation (cold spawn)
@@ -782,7 +782,7 @@ Max Concurrent: 5 (Wave 4)
 
 ### Wave 2 — Foundation (Vendor + Types + Allow-list)
 
-- [ ] 5. Vendor mcp_excalidraw source at pinned SHA
+- [x] 5. Vendor mcp_excalidraw source at pinned SHA
 
   **What to do**:
   - `cd src-tauri/resources && git clone https://github.com/yctimlin/mcp_excalidraw && cd mcp_excalidraw && git checkout c12ff87f6d607ccac7b217ae415bee8d855a067e`
@@ -861,7 +861,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `src-tauri/resources/mcp_excalidraw/**`, `src-tauri/resources/mcp_excalidraw/UPSTREAM.md`, `.gitignore`/`.gitattributes` if updated
   - Pre-commit: `cd src-tauri/resources/mcp_excalidraw && bun dist/index.js --help` (smoke)
 
-- [ ] 6. Update NOTICE for MIT attribution
+- [x] 6. Update NOTICE for MIT attribution
 
   **What to do**:
   - Append mcp_excalidraw attribution block to top-level `NOTICE` (or create if missing) per Apache-2.0 §4(d) requirements
@@ -927,7 +927,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `NOTICE`
   - Pre-commit: none
 
-- [ ] 7. Define CanvasMcpOrchestrator TS contract types
+- [x] 7. Define CanvasMcpOrchestrator TS contract types
 
   **What to do**:
   - Create `web-app/src/lib/canvas-mcp-orchestrator/types.ts` exporting:
@@ -1004,7 +1004,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `web-app/src/lib/canvas-mcp-orchestrator/types.ts`, `types.test.ts`
   - Pre-commit: `cd web-app && bun typecheck && bun test src/lib/canvas-mcp-orchestrator/`
 
-- [ ] 8. Curated-tool allow-list module + hard-exclude filter
+- [x] 8. Curated-tool allow-list module + hard-exclude filter
 
   **What to do**:
   - Create `web-app/src/lib/canvas-mcp-orchestrator/curated-tools.ts` with:
