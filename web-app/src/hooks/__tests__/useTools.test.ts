@@ -5,12 +5,37 @@ import { SystemEvent } from '@/types/events'
 // Mock functions
 const mockGetTools = vi.fn()
 const mockUpdateTools = vi.fn()
+const mockUpdateRagToolNames = vi.fn()
+const mockUpdateMcpToolNames = vi.fn()
+const mockUpdateCanvasToolNames = vi.fn()
 const mockListen = vi.fn()
 const mockUnsubscribe = vi.fn()
 
-// Mock useAppState
+// Mock useAppState — provide every updater the hook subscribes to so the
+// selector always returns a callable. Missing updaters would throw inside the
+// effect and silently swallow assertions further down the call chain.
 vi.mock('../useAppState', () => ({
-  useAppState: (selector: any) => selector({ updateTools: mockUpdateTools }),
+  useAppState: (selector: any) =>
+    selector({
+      updateTools: mockUpdateTools,
+      updateRagToolNames: mockUpdateRagToolNames,
+      updateMcpToolNames: mockUpdateMcpToolNames,
+      updateCanvasToolNames: mockUpdateCanvasToolNames,
+    }),
+}))
+
+// Mock canvas built-in tools so the test does not depend on T18 internals.
+vi.mock('@/lib/canvas/ai-tools', () => ({
+  canvasBuiltinTools: [
+    {
+      name: 'canvas_list',
+      description: 'List canvases',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      server: 'canvas',
+      handler: vi.fn(),
+    },
+  ],
+  CANVAS_TOOL_SERVER: 'canvas',
 }))
 
 // Mock the ServiceHub
@@ -56,7 +81,16 @@ describe('useTools', () => {
     })
 
     expect(mockGetTools).toHaveBeenCalledTimes(1)
-    expect(mockUpdateTools).toHaveBeenCalledWith(mockTools)
+    // updateTools is now called with [...mcpTools, ...canvasBuiltinTools]
+    expect(mockUpdateTools).toHaveBeenCalledTimes(1)
+    const passed = mockUpdateTools.mock.calls[0][0]
+    expect(passed).toEqual(
+      expect.arrayContaining([
+        ...mockTools,
+        expect.objectContaining({ name: 'canvas_list', server: 'canvas' }),
+      ])
+    )
+    expect(mockUpdateCanvasToolNames).toHaveBeenCalledWith(['canvas_list'])
   })
 
   it('should set up event listener for MCP_UPDATE', async () => {
@@ -105,7 +139,15 @@ describe('useTools', () => {
     })
 
     expect(mockGetTools).toHaveBeenCalledTimes(1)
-    expect(mockUpdateTools).toHaveBeenCalledWith(mockTools)
+    // After MCP_UPDATE: updateTools called with merged set including canvas tools
+    expect(mockUpdateTools).toHaveBeenCalledTimes(1)
+    const passed = mockUpdateTools.mock.calls[0][0]
+    expect(passed).toEqual(
+      expect.arrayContaining([
+        ...mockTools,
+        expect.objectContaining({ name: 'canvas_list', server: 'canvas' }),
+      ])
+    )
   })
 
   it('should return unsubscribe function for cleanup', async () => {
@@ -142,8 +184,10 @@ describe('useTools', () => {
     })
 
     expect(mockGetTools).toHaveBeenCalledTimes(1)
-    // updateTools should not be called if getTools fails
+    // updateTools should not be called if getTools fails (Promise.all rejects
+    // before we reach the merge step)
     expect(mockUpdateTools).not.toHaveBeenCalled()
+    expect(mockUpdateCanvasToolNames).not.toHaveBeenCalled()
 
     consoleErrorSpy.mockRestore()
   })

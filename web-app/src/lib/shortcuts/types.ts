@@ -9,6 +9,7 @@ export enum ShortcutAction {
   NEW_PROJECT = 'newProject',
   TOGGLE_SIDEBAR = 'toggleSidebar',
   GO_TO_SETTINGS = 'goSettings',
+  GO_TO_CANVAS = 'goCanvas',
   SEARCH = 'search',
   ZOOM_IN = 'zoomIn',
   ZOOM_OUT = 'zoomOut',
