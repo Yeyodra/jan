@@ -1166,7 +1166,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `src-tauri/src/core/mcp/constants.rs`, `src-tauri/src/core/mcp/tests.rs`
   - Pre-commit: `cd src-tauri && cargo check && cargo test core::mcp::tests`
 
-- [ ] 10. Update tauri.{windows,macos,linux}.conf.json resources arrays
+- [x] 10. Update tauri.{windows,macos,linux}.conf.json resources arrays
 
   **What to do**:
   - For each platform-specific Tauri config (`tauri.windows.conf.json`, `tauri.macos.conf.json`, `tauri.linux.conf.json`):

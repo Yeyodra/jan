@@ -339,3 +339,18 @@ Never use the `.toHaveProperty(...).toEqualTypeOf(...)` chain. Always Pattern A 
 - Default `cargo test` on this Windows host fails with `STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)` on the test binary entry — wry/webview2 delay-load issue specific to default features. `cargo test --lib --no-default-features --features test-tauri` runs cleanly. ALL Rust tests on this branch will need this invocation; suggest documenting in CONTRIBUTING.
 - Total cargo build time impact: initial `cargo check --workspace` ≈ 15s incremental; first `cargo test --no-run` build ≈ 46s; full test cycle with `test-tauri` ≈ 71s. Negligible.
 - No surprise re: `official` field — `McpServerConfig` does not capture it, but the JSON tolerates extra fields (parsed via `serde_json::Value`), and UI/T21 read `official` directly off the JSON.
+
+## [2026-06-16T22:16:54Z] T10 — Tauri bundle.resources
+
+- Added two entries to undle.resources in 	auri.{windows,macos,linux}.conf.json:
+  - `"resources/mcp_excalidraw/dist/**/*"`
+  - `"resources/mcp_excalidraw/package.json"`
+- Pre/post array sizes:
+  - windows: 3 -> 5
+  - macos:   5 -> 7
+  - linux:   3 -> 5
+- Path style: forward slashes everywhere — matches existing entries (esources/pre-install/**/*, esources/bin/jan-cli.exe). Tauri's bundler normalizes per-platform; no Windows backslash needed in JSON.
+- iOS / Android configs untouched (verified via git diff --quiet, exit 0).
+- Verification: JSON parse round-trip via ConvertFrom-Json succeeded for all 5 configs. Skipped cargo check per the alternate verification clause in §2 — Tauri config schema would have rejected an invalid undle.resources shape at parse time, and PowerShell's ConvertFrom-Json confirmed all three modified files are syntactically valid JSON.
+- NSIS: NO-CHANGE. src-tauri/tauri.bundle.windows.nsis.template is a build-artifact snapshot (contains hard-coded GitHub Actions runner paths like `D:\a\jan\jan\...`) and is NOT referenced from any tauri.conf.json. Tauri auto-regenerates the NSIS script from undle.resources at bundle time, so the new entries are picked up automatically without touching the template. Editing the snapshot would not affect real builds.
+- Evidence: `.sisyphus/evidence/task-10-resource-presence.txt` — all 3 desktop = 2 entries, both mobile = 0 entries, STATUS: PASS.

@@ -1,0 +1,6 @@
+﻿tauri.windows.conf.json: 2 mcp_excalidraw entries
+tauri.macos.conf.json: 2 mcp_excalidraw entries
+tauri.linux.conf.json: 2 mcp_excalidraw entries
+tauri.ios.conf.json: 0 mcp_excalidraw entries
+tauri.android.conf.json: 0 mcp_excalidraw entries
+STATUS: PASS
