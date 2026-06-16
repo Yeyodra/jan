@@ -224,6 +224,11 @@ jobs:
           yarn --version
           yarn config set -H enableImmutableInstalls false
 
+      - name: Build mcp_excalidraw dist
+        shell: bash
+        run: |
+          cd src-tauri/resources/mcp_excalidraw && npm ci && npm run build
+
       - name: Build app
         shell: bash
         run: |

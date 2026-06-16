@@ -1,0 +1,46 @@
+﻿cargo :    Compiling tauri v2.8.5
+At line:1 char:48
++ ... ; $output = cargo check --no-default-features --features test-tauri 2 ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling tauri v2.8.5:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Checking muda v0.17.1
+   Compiling tauri-macros v2.4.0
+    Checking tauri-runtime-wry v2.8.1
+   Compiling Jan v0.8.2 (C:\Users\Nazril\Documents\Projek\jan\src-tauri)
+    Checking tray-icon v0.21.1
+   Compiling tauri-plugin-hardware v0.8.2 
+(C:\Users\Nazril\Documents\Projek\jan\src-tauri\plugins\tauri-plugin-hardware)
+   Compiling tauri-plugin-fs v2.4.2
+   Compiling tauri-plugin-deep-link v2.4.3
+   Compiling tauri-plugin-os v2.3.1
+   Compiling tauri-plugin-log v2.7.0
+   Compiling tauri-plugin-store v2.4.0
+   Compiling tauri-plugin-vector-db v0.1.0 
+(C:\Users\Nazril\Documents\Projek\jan\src-tauri\plugins\tauri-plugin-vector-db)
+   Compiling tauri-plugin-opener v2.5.0
+   Compiling tauri-plugin-shell v2.3.1
+   Compiling tauri-plugin-updater v2.9.0
+   Compiling tauri-plugin-rag v0.1.0 (C:\Users\Nazril\Documents\Projek\jan\src-tauri\plugins\tauri-plugin-rag)
+   Compiling tauri-plugin-llamacpp v0.8.2 
+(C:\Users\Nazril\Documents\Projek\jan\src-tauri\plugins\tauri-plugin-llamacpp)
+   Compiling tauri-plugin-http v2.5.2
+error: failed to run custom build command for `Jan v0.8.2 (C:\Users\Nazril\Documents\Projek\jan\src-tauri)`
+
+Caused by:
+  process didn't exit successfully: 
+`C:\Users\Nazril\Documents\Projek\jan\src-tauri\target\debug\build\Jan-8764d737b0e5514f\build-script-build` (exit 
+code: 101)
+  --- stdout
+  cargo:rerun-if-changed=resources/mcp_excalidraw/dist/index.js
+
+  --- stderr
+
+  thread 'main' (25668) panicked at build.rs:19:13:
+  mcp_excalidraw dist missing or empty ΓÇö run `cd src-tauri/resources/mcp_excalidraw && npm ci && npm run build` to 
+rebuild
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+warning: build failed, waiting for other jobs to finish...
+
+STATUS: PASS - failure mode contains 'mcp_excalidraw' and 'missing'; restore succeeded (cargo check exit 0 in 25.9s)

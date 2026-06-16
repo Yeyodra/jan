@@ -35,6 +35,28 @@ at the repo root to ensure T11's runtime install never gets committed.
 7. Update top-level `NOTICE` (Task 6) if upstream license terms changed
 8. Commit: `chore(mcp): bump mcp_excalidraw to <SHORT_SHA>`
 
+## Rebuilding dist/
+
+When `dist/index.js` is missing, empty, or stale (e.g. right after an upstream
+bump or after a `git clean`), rebuild it with:
+
+```sh
+cd src-tauri/resources/mcp_excalidraw && npm ci && npm run build
+```
+
+**When to run:**
+
+- After bumping the pinned upstream SHA (see "How to bump" above).
+- After `dist/index.js` is deleted or its size shrinks to zero (the Tauri
+  build hook in `src-tauri/build.rs` panics with an actionable message that
+  includes this exact one-liner).
+- On CI release pipelines (always run pre-build for reproducibility).
+
+**Why npm and not bun:** mcp_excalidraw upstream maintainers test with `npm`,
+and `package-lock.json` is the lockfile they ship. Staying aligned with the
+upstream toolchain avoids subtle resolver differences and matches plan §1248.
+The runtime sidecar still spawns under `bun` — only the build step is `npm`.
+
 ## Contract for downstream tasks
 
 - **Task 11 (Tauri build hook)** must verify the SHA-256 of `dist/index.js`

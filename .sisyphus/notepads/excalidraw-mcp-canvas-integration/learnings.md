@@ -354,3 +354,20 @@ Never use the `.toHaveProperty(...).toEqualTypeOf(...)` chain. Always Pattern A 
 - Verification: JSON parse round-trip via ConvertFrom-Json succeeded for all 5 configs. Skipped cargo check per the alternate verification clause in §2 — Tauri config schema would have rejected an invalid undle.resources shape at parse time, and PowerShell's ConvertFrom-Json confirmed all three modified files are syntactically valid JSON.
 - NSIS: NO-CHANGE. src-tauri/tauri.bundle.windows.nsis.template is a build-artifact snapshot (contains hard-coded GitHub Actions runner paths like `D:\a\jan\jan\...`) and is NOT referenced from any tauri.conf.json. Tauri auto-regenerates the NSIS script from undle.resources at bundle time, so the new entries are picked up automatically without touching the template. Editing the snapshot would not affect real builds.
 - Evidence: `.sisyphus/evidence/task-10-resource-presence.txt` — all 3 desktop = 2 entries, both mobile = 0 entries, STATUS: PASS.
+
+## [2026-06-16T22:26:13Z] T11 — Build hook + CI pre-build
+
+- **Panic message committed** (grep-able tokens: `mcp_excalidraw` + `missing`):
+  `mcp_excalidraw dist missing or empty — run cd src-tauri/resources/mcp_excalidraw && npm ci && npm run build to rebuild`
+- **build.rs change**: added `verify_mcp_excalidraw_dist()` gated by `#[cfg(not(feature = "cli"))]`; called before `tauri_build::build()` so the build fails fast. Emits `cargo:rerun-if-changed=resources/mcp_excalidraw/dist/index.js` to avoid stale-error caching. std-only, no new Cargo deps.
+- **CI templates touched** (added `Build mcp_excalidraw dist` step running `cd src-tauri/resources/mcp_excalidraw && npm ci && npm run build` immediately before `make build`):
+  - `.github/workflows/template-tauri-build-windows-x64.yml`
+  - `.github/workflows/template-tauri-build-macos.yml`
+  - `.github/workflows/template-tauri-build-linux-x64.yml`
+- **setup-node insertion**: already present in all three templates (Node 20, `actions/setup-node@v4`) — no additional setup-node step needed.
+- **External / flatpak templates** (`template-tauri-build-*-external.yml`, `template-tauri-build-linux-x64-flatpak.yml`): NOT touched in T11; scope was the three primary release templates per task spec. Track for follow-up if release matrix expands to publish those.
+- **Verification runtime on this host (Windows, cold target/ already warm)**:
+  - Failure path (dist moved away): `cargo check --no-default-features --features test-tauri` → exit 101 in **~24.2 s**, stderr contained both `mcp_excalidraw` and `missing` tokens.
+  - Success path (dist restored): same invocation → exit 0 in **~25.9 s**.
+  - **T12 budget hint**: ~25 s per `cargo check` invocation on this Windows host with a warm target/. Full `cargo tauri build` was NOT run here (deferred to T12 per spec).
+- **Evidence files**: `.sisyphus/evidence/task-11-build-fail.log` (cargo stderr + STATUS: PASS), `.sisyphus/evidence/task-11-bundle-contents.txt` (per-platform bundle.resources + glob match assertion + 175-file dist listing).

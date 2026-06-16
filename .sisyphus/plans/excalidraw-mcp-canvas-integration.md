@@ -1233,7 +1233,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `src-tauri/tauri.windows.conf.json`, `src-tauri/tauri.macos.conf.json`, `src-tauri/tauri.linux.conf.json`, optional: `src-tauri/tauri.bundle.windows.nsis.template`
   - Pre-commit: `cd src-tauri && cargo check`
 
-- [ ] 11. Build hook — install mcp_excalidraw deps & build dist at Tauri build time
+- [x] 11. Build hook — install mcp_excalidraw deps & build dist at Tauri build time
 
   **What to do**:
   - DECISION POINT: bundle `dist/` only (smaller, requires re-build per upstream-update) OR bundle full source + run `npm ci && npm run build` at Tauri build (larger, more reproducible)

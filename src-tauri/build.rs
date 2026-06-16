@@ -1,6 +1,30 @@
+#[cfg(not(feature = "cli"))]
+fn verify_mcp_excalidraw_dist() {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .expect("CARGO_MANIFEST_DIR must be set during build");
+    let dist_path = std::path::Path::new(&manifest_dir)
+        .join("resources/mcp_excalidraw/dist/index.js");
+
+    println!("cargo:rerun-if-changed=resources/mcp_excalidraw/dist/index.js");
+
+    let missing_msg = "mcp_excalidraw dist missing or empty \u{2014} run `cd src-tauri/resources/mcp_excalidraw && npm ci && npm run build` to rebuild";
+
+    match std::fs::metadata(&dist_path) {
+        Ok(meta) => {
+            if meta.len() == 0 {
+                panic!("{}", missing_msg);
+            }
+        }
+        Err(_) => {
+            panic!("{}", missing_msg);
+        }
+    }
+}
+
 fn main() {
     #[cfg(not(feature = "cli"))]
     {
+        verify_mcp_excalidraw_dist();
         tauri_build::build();
     }
 
