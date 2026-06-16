@@ -14,10 +14,25 @@ import {
 describe('CanvasMcpOrchestrator contract types', () => {
   describe('OrchestratorRequest', () => {
     it('has the four required string fields', () => {
-      expectTypeOf<OrchestratorRequest>().toHaveProperty('canvasId').toEqualTypeOf<string>()
-      expectTypeOf<OrchestratorRequest>().toHaveProperty('prompt').toEqualTypeOf<string>()
-      expectTypeOf<OrchestratorRequest>().toHaveProperty('threadId').toEqualTypeOf<string>()
-      expectTypeOf<OrchestratorRequest>().toHaveProperty('modelId').toEqualTypeOf<string>()
+      // Pattern A — full-shape equality (bun-compatible: works on the root chain).
+      expectTypeOf<OrchestratorRequest>().toEqualTypeOf<{
+        canvasId: string
+        prompt: string
+        threadId: string
+        modelId: string
+      }>()
+
+      // Pattern B — runtime structural sanity (catches accidental field renames).
+      const sample: OrchestratorRequest = {
+        canvasId: 'c',
+        prompt: 'p',
+        threadId: 't',
+        modelId: 'm',
+      }
+      expect(sample.canvasId).toBe('c')
+      expect(sample.prompt).toBe('p')
+      expect(sample.threadId).toBe('t')
+      expect(sample.modelId).toBe('m')
     })
   })
 
@@ -37,10 +52,19 @@ describe('CanvasMcpOrchestrator contract types', () => {
 
   describe('McpToolCall', () => {
     it('has a string name and a record of arguments', () => {
-      expectTypeOf<McpToolCall>().toHaveProperty('name').toEqualTypeOf<string>()
-      expectTypeOf<McpToolCall>()
-        .toHaveProperty('arguments')
-        .toEqualTypeOf<Record<string, unknown>>()
+      // Pattern A — full-shape equality (bun-compatible).
+      expectTypeOf<McpToolCall>().toEqualTypeOf<{
+        name: string
+        arguments: Record<string, unknown>
+      }>()
+
+      // Pattern B — runtime structural sanity.
+      const sample: McpToolCall = {
+        name: 'create_element',
+        arguments: { type: 'rectangle', x: 0, y: 0 },
+      }
+      expect(sample.name).toBe('create_element')
+      expect(sample.arguments).toMatchObject({ type: 'rectangle' })
     })
   })
 
@@ -142,12 +166,16 @@ describe('CanvasMcpOrchestrator contract types', () => {
       }
       expect(t2.spawnDurationMs).toBe(123)
 
-      // Type-level: spawnDurationMs is `number | undefined`, others are not undefined-able.
-      expectTypeOf<Telemetry>().toHaveProperty('spawnDurationMs').toEqualTypeOf<number | undefined>()
-      expectTypeOf<Telemetry>().toHaveProperty('toolCallCount').toEqualTypeOf<number>()
-      expectTypeOf<Telemetry>().toHaveProperty('batchSize').toEqualTypeOf<number>()
-      expectTypeOf<Telemetry>().toHaveProperty('approvalCount').toEqualTypeOf<number>()
-      expectTypeOf<Telemetry>().toHaveProperty('errors').toEqualTypeOf<string[]>()
+      // Type-level: Pattern A — full-shape equality with `spawnDurationMs?: number`.
+      // Bun's vitest shim doesn't implement the `.toHaveProperty(...).toEqualTypeOf(...)`
+      // chain (returns undefined at the second link), so we assert the whole shape at once.
+      expectTypeOf<Telemetry>().toEqualTypeOf<{
+        spawnDurationMs?: number
+        toolCallCount: number
+        batchSize: number
+        approvalCount: number
+        errors: string[]
+      }>()
     })
 
     it('rejects missing required fields', () => {
