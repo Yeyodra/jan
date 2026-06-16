@@ -1,0 +1,52 @@
+﻿=== Warm-up run (NOT counted) ===
+Warm-up done.
+
+=== Run 1 ===
+Wall-clock: 8010 ms
+Tool count: 30
+
+=== Run 2 ===
+Wall-clock: 7535 ms
+Tool count: 30
+
+=== Run 3 ===
+Wall-clock: 7403 ms
+Tool count: 30
+
+=== Run 4 ===
+Wall-clock: 7418 ms
+Tool count: 30
+
+=== Run 5 ===
+Wall-clock: 7366 ms
+Tool count: 30
+
+=== Summary ===
+
+Run   ms toolCount
+---   -- ---------
+  1 8010        30
+  2 7535        30
+  3 7403        30
+  4 7418        30
+  5 7366        30
+
+
+
+Mean   : 7546.4 ms
+Stdev  : 238.6 ms (population)
+Max    : 8010 ms
+Min    : 7366 ms
+Stdev% : 3.2%
+
+=== Direct-spawn measurements (no Inspector CLI, closer to Jan's TokioChildProcess path) ===
+Direct Run 1 : 398 ms, id:2 frames=1
+Direct Run 2 : 379 ms, id:2 frames=1
+Direct Run 3 : 375 ms, id:2 frames=1
+Direct Run 4 : 377 ms, id:2 frames=1
+Direct Run 5 : 380 ms, id:2 frames=1
+
+Direct Mean   : 381.8 ms
+Direct Stdev  : 8.3 ms
+Direct Max    : 398 ms
+Direct Min    : 375 ms

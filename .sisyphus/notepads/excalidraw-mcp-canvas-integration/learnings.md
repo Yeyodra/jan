@@ -175,3 +175,32 @@ flagged fragmentation. Full table in
 L608-610). There is NO public `undo()` / `redo()` method. QA for T17/T22
 must trigger undo via keyboard events (`Ctrl/Cmd+Z`) or via
 `registerAction(...)`. Document this when writing the Playwright tests.
+
+## [2026-06-16] Task T4: First-spawn latency measurement
+
+### Cold-spawn numbers (5 runs each, bun/node killed between, 800ms settle)
+
+- **Direct-stdio path (Jan-representative)**: mean 381.8 ms, stdev 8.3 ms (2.2% of mean), min 375, max 398.
+- **Inspector CLI wrapper (upper bound)**: mean 7546.4 ms, stdev 238.6 ms (3.2%), min 7366, max 8010.
+- Inspector wrapper adds ~7.2s of Node + Inspector CLI startup — NOT what Jan pays. Use the 382 ms number for production sizing.
+- Numbers are warm-OS-cache. Cold-OS-cache (post-reboot, anti-virus scan) likely 700-1000 ms; treat 382 ms as best case.
+
+### Latency budget for T19 (CanvasAiIndicator)
+
+- Cold spawn (mean 382 ms) is < 800 ms plan threshold but > 300 ms "indicator-can-defer-150ms" threshold.
+- **Decision**: indicator MUST appear within ≤ 200 ms of send-button click on the FIRST tool call per Jan session. Auto-hide on first tool resolution.
+- For subsequent tool calls in the same session (persistent stdio, no respawn), defer indicator to 150 ms of pending state.
+- 200 ms budget is conservative — handles real-world cold-OS-cache + AV scan scenarios that we couldn't measure.
+
+### Tool count anomaly (resolved)
+
+- runs.txt reports 30 tools — this is a "name"-substring counting artifact. The script counted every "name" in the tools/list JSON, which matches both tool.name AND inputSchema.properties.<param>.name fields.
+- True tool count parsed via ConvertFrom-Json from .result.tools.length = **26**, matches T2 and the plan.
+- **T8 allow-list count = 26 tools**, not 30. First 5 verified: create_element, update_element, delete_element, query_elements, get_resource.
+
+### Methodology notes (for future spikes)
+
+- Don't trust Select-String '"name"' | Measure-Object for counting tools — always parse the JSON. Substring matches inflate counts because parameter schemas reuse the "name" key.
+- When measuring MCP spawn latency, the Inspector CLI is a convenient client but adds 7s of Node startup. For numbers that map to production, pipe raw JSON-RPC frames over stdin and time spawn → response.
+- 5 runs with stdev < 5% of mean is plenty for a spike — no need for more samples unless variance is high.
+
