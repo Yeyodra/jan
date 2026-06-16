@@ -204,3 +204,41 @@ must trigger undo via keyboard events (`Ctrl/Cmd+Z`) or via
 - When measuring MCP spawn latency, the Inspector CLI is a convenient client but adds 7s of Node startup. For numbers that map to production, pipe raw JSON-RPC frames over stdin and time spawn → response.
 - 5 runs with stdev < 5% of mean is plenty for a spike — no need for more samples unless variance is high.
 
+
+## T7 — CanvasMcpOrchestrator contract types (Wave 2)
+
+**Date:** 2026-06-16
+**Files:**
+- `web-app/src/lib/canvas-mcp-orchestrator/types.ts` — types-only module
+- `web-app/src/lib/canvas-mcp-orchestrator/types.test.ts` — 12 vitest tests, all green
+
+### Canonical contract shape
+- `OrchestratorRequest` = `{ canvasId, prompt, threadId, modelId }` — all `string`.
+- `OrchestratorState` = exactly 5 literals: `'idle' | 'spawning' | 'awaiting-approval' | 'drawing' | 'error'`.
+- `McpToolCall` = `{ name: string, arguments: Record<string, unknown> }`.
+- `McpToolResult` = **discriminated union**:
+  - success: `{ content: Array<{ type: 'text', text: string }> }`
+  - error:   `{ error: string }`
+  - Structurally compatible with Jan-core `MCPToolCallResult` (which is the flat `{ error, content }` shape). Adapter at boundary maps between the two.
+- `ElementIdMapping` = `Map<string /* mcp id */, string /* canvas-store id */>`.
+- `OrchestratorResponsibility` is a runtime `const` (not enum) with 11 entries → keys are method names, values are short verbatim summaries from plan.
+- `OrchestratorResponsibilityName` = `keyof typeof OrchestratorResponsibility` (machine-checkable name union).
+- `Telemetry` = `{ spawnDurationMs?, toolCallCount, batchSize, approvalCount, errors }` — only `spawnDurationMs` optional.
+
+### The 11 responsibilities (verbatim, in canonical order)
+1. `resolveActiveCanvas` — active-canvas resolution
+2. `dispatchToolCall` — gated dispatch
+3. `translateElementId` — ID translation
+4. `syncStateFromCanvas` — push canvas-store state into mcp_excalidraw at session start
+5. `beginAiBatch` — undo grouping start (returns token used by endAiBatch)
+6. `endAiBatch` — commits one history entry via captureUpdate
+7. `handleProcessCrash` — orchestrate restart + state replay
+8. `translateToolResult` — MCP → canvas-store mutations
+9. `applyTheme` — apply Jan theme defaults
+10. `lockManualEdits` — concurrency control
+11. `enforceCuratedToolList` — wraps `filterAllowedTools` from T8
+
+### Gotchas / decisions
+- Used `export const OrchestratorResponsibility = {...} as const` instead of a TS `enum` — gives both runtime introspection (`Object.keys(...).length === 11`) and a type via `keyof typeof`, with zero extra runtime cost and no enum-emit surprises.
+- Did NOT import from `@janhq/core` in `types.ts` itself (kept types fully standalone for future server-swap); only `types.test.ts` imports `MCPToolCallResult` to assert structural compatibility.
+- Test runner = vitest, NOT `bun test` directly. Use `bun run test -- <path>` so the cross-env wrapper invokes vitest. `bun test` directly fails on `expectTypeOf().toHaveProperty().toEqualTypeOf()` chaining (Bun's bundled jest-compatible runner does not implement the full vitest type-assertion API).
