@@ -97,3 +97,28 @@ Extracted `dispatchCanvasTool` into its own pure module. Rationale: testable wit
 - For canvas-store-backed tests, mock `idb-keyval` (the persist middleware imports it eagerly under jsdom — without the mock it throws on missing IndexedDB). Pattern lifted from `ai-tools.test.ts` lines 30-39.
 - Reset the store with `useCanvasStore.setState({ canvases: {} })` in `beforeEach` (NOT with `replace=true` — that strips middleware-injected state).
 - `bun test` doesn't pick up vitest's jsdom config — `bun test src/hooks/__tests__/useTools.test.ts` fails with `ReferenceError: document is not defined`. Use `npx vitest --run <path>` for anything that touches React/testing-library. `bun test` is fine for pure modules like `dispatch.test.ts` and `ai-tools.test.ts`.
+
+
+## [2026-06-16] Task T2: bun runtime spike (PASS-WITH-CAVEATS)
+
+### Confirmed facts
+- **bun 1.3.14** cleanly runs Node-built `dist/index.js` of mcp_excalidraw at SHA `c12ff87f6d607ccac7b217ae415bee8d855a067e` over MCP stdio.
+- `tools/list` returns **26 tools** (matches plan acceptance). Buckets all present per README: Element CRUD, Layout, Scene Awareness, File I/O, State, Viewport, Design Guide, Resources.
+- Hard-exclude targets confirmed in surfaced list: `export_to_image` (#18), `get_canvas_screenshot` (#23). T8 exclude list = these two → 24 surfaced after projection.
+- Boot is **silent on stderr** under `ENABLE_CANVAS_SYNC=false`. Production env contract: this flag must be set when spawning via `src-tauri/src/core/mcp/helpers.rs:570-610`.
+- Wall-clock: cold ~40s (dominated by `npx --yes @modelcontextprotocol/inspector` package fetch); warm ~5s. mcp_excalidraw startup itself is sub-second.
+- Build: `npm ci` 566 pkgs / ~23s; `npm run build` = vite frontend (2007 modules) + tsc server, both clean. `dist/index.js` = 95755 bytes.
+
+### Caveats
+- npm warns during cold `npx` fetch: `inflight@1.0.6`, `glob@7.2.3`, `node-domexception@1.0.0`. All from MCP Inspector transitive deps, not mcp_excalidraw. Disappear on warm runs.
+- 29 npm-audit vulnerabilities reported on `npm ci` (mcp_excalidraw deps). Informational; upstream concern. Not blocking spike.
+- Negative test: `export_to_image` and `get_canvas_screenshot` did **NOT hang** under `ENABLE_CANVAS_SYNC=false` with no Express server — both error quickly with `"Error: Unable to connect"` and `isError: true` (~5-6s). Hard-exclude rationale still holds (broken tools, polluted tool registry, hang risk under different env flags) but the QA hang prediction was not reproduced.
+
+### Unblocks
+- **T5** (vendor mcp_excalidraw) — bun-runs-it confirmed; vendor at same SHA.
+- **T8** (registry projection) — exclude list = `["export_to_image", "get_canvas_screenshot"]`.
+
+### Evidence
+- `.sisyphus/spikes/02-bun-runtime.md` (full report)
+- `.sisyphus/evidence/task-2-bun-tools-list.json` (raw tools/list response)
+- `.sisyphus/evidence/task-2-export-to-image-hangs.txt` (negative test)
