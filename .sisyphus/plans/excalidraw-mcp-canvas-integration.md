@@ -1089,7 +1089,7 @@ Max Concurrent: 5 (Wave 4)
 
 ### Wave 3 — Tauri + MCP Wiring (Config-Only)
 
-- [ ] 9. Add excalidraw entry to DEFAULT_MCP_CONFIG
+- [x] 9. Add excalidraw entry to DEFAULT_MCP_CONFIG
 
   **What to do**:
   - Edit `src-tauri/src/core/mcp/constants.rs::DEFAULT_MCP_CONFIG`

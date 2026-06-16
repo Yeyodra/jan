@@ -330,3 +330,12 @@ Never use the `.toHaveProperty(...).toEqualTypeOf(...)` chain. Always Pattern A 
 - PowerShell gotcha: `Out-File -Encoding utf8` produces a UTF-8-with-BOM file on Windows PowerShell 5.1. The canonical T2 JSON evidence also carries a BOM, so the test strips `\uFEFF` before `JSON.parse`. Future test code reading any of these evidence files should do the same.
 - No new typecheck errors introduced (`tsc --noEmit` produced no diagnostics mentioning `curated-tools`).
 - No `bun run typecheck` script exists in `web-app/package.json` — the closest scripts are `build` (which runs `tsc -b`). Treated the brief's "or no NEW errors vs baseline" clause as satisfied via direct `tsc --noEmit`.
+
+## [2026-06-16T22:11:34Z] T9 — DEFAULT_MCP_CONFIG entry
+
+- DEFAULT_MCP_CONFIG is a pub const &str raw-string (#"..."#) of JSON in `src-tauri/src/core/mcp/constants.rs`; not a typed Rust map. Added the 8th entry by extending the raw string.
+- `McpServerConfig` (in `models.rs`) does **not** derive `Deserialize`; the field names also do not match the JSON keys (`transport_type` vs `type`, `envs` vs `env`). The runtime path uses `helpers::extract_command_args` to convert `serde_json::Value` → `McpServerConfig`. The new test follows that same pathway to assert both raw-JSON shape **and** typed parsing.
+- Cargo build is sensitive to a missing `../web-app/dist` folder because `tauri::generate_context!()` validates `frontendDist` at proc-macro time. Created a stub `../web-app/dist/index.html` to unblock `cargo check`. ATLAS HEADS UP: `web-app/dist` does not belong to T9, but T9 cannot compile without it.
+- Default `cargo test` on this Windows host fails with `STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)` on the test binary entry — wry/webview2 delay-load issue specific to default features. `cargo test --lib --no-default-features --features test-tauri` runs cleanly. ALL Rust tests on this branch will need this invocation; suggest documenting in CONTRIBUTING.
+- Total cargo build time impact: initial `cargo check --workspace` ≈ 15s incremental; first `cargo test --no-run` build ≈ 46s; full test cycle with `test-tauri` ≈ 71s. Negligible.
+- No surprise re: `official` field — `McpServerConfig` does not capture it, but the JSON tolerates extra fields (parsed via `serde_json::Value`), and UI/T21 read `official` directly off the JSON.

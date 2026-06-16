@@ -57,6 +57,13 @@ pub const DEFAULT_MCP_CONFIG: &str = r#"{
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
       "env": {},
       "active": false
+    },
+    "excalidraw": {
+      "command": "bun",
+      "args": ["resources/mcp_excalidraw/dist/index.js"],
+      "env": { "ENABLE_CANVAS_SYNC": "false" },
+      "active": false,
+      "official": true
     }
   },
   "mcpSettings": {

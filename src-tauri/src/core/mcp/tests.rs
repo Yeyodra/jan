@@ -968,3 +968,44 @@ fn test_cleanup_own_locks_removes_only_current_pid_locks() {
     // Cleanup
     let _ = std::fs::remove_file(&other_path);
 }
+
+// ============================================================================
+// excalidraw entry in DEFAULT_MCP_CONFIG (T9)
+// ============================================================================
+
+#[test]
+fn test_default_config_has_excalidraw() {
+    use super::constants::DEFAULT_MCP_CONFIG;
+    use super::helpers::extract_command_args;
+
+    let value: serde_json::Value = serde_json::from_str(DEFAULT_MCP_CONFIG)
+        .expect("DEFAULT_MCP_CONFIG must be valid JSON");
+
+    let entry = value["mcpServers"]
+        .get("excalidraw")
+        .expect("excalidraw entry must exist in mcpServers");
+
+    // Raw-JSON shape assertions
+    assert_eq!(entry["command"], "bun");
+    assert_eq!(entry["args"][0], "resources/mcp_excalidraw/dist/index.js");
+    assert_eq!(entry["env"]["ENABLE_CANVAS_SYNC"], "false");
+    assert_eq!(entry["active"], false);
+    assert_eq!(entry["official"], true);
+
+    // Typed McpServerConfig parsing via the same helper used by the runtime
+    let parsed = extract_command_args(entry)
+        .expect("excalidraw entry must parse into McpServerConfig");
+
+    assert_eq!(parsed.command, "bun");
+    assert_eq!(
+        parsed.args[0].as_str().unwrap(),
+        "resources/mcp_excalidraw/dist/index.js"
+    );
+    assert_eq!(
+        parsed.envs.get("ENABLE_CANVAS_SYNC").and_then(|v| v.as_str()),
+        Some("false")
+    );
+
+    println!("{parsed:#?}");
+    println!("active={} official={}", entry["active"], entry["official"]);
+}
