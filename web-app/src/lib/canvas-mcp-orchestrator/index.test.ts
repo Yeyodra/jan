@@ -44,23 +44,23 @@ function fakeTool(name: string): MCPTool {
 // Expected method ↔ implementing-task pairs. Drives the parametric TODO
 // assertions below.
 //
-// T14 partial-completion note: `resolveActiveCanvas` and
-// `syncStateFromCanvas` have REAL implementations as of T14 and have moved
-// into the dedicated "real behaviour" describe block below. The remaining
-// T14 method (`applyTheme`) and the T15/T16/T17/T22 methods still throw
-// TODO and stay in this list. `handleProcessCrash` is also T14-scoped but
-// is intentionally left as a TODO thrower until the crash-restart wiring
-// lands (separate sub-task — see plan §1480 follow-ups).
+// T14/T15 partial-completion note: `resolveActiveCanvas`,
+// `syncStateFromCanvas`, and `dispatchToolCall` have REAL implementations
+// as of T14/T15 and have moved into the dedicated "real behaviour" describe
+// blocks below. The remaining T14 method (`applyTheme`) and the T16/T17/T22
+// methods still throw TODO and stay in this list. `handleProcessCrash` is
+// also T14-scoped but is intentionally left as a TODO thrower until the
+// crash-restart wiring lands (separate sub-task — see plan §1480 follow-ups).
 const RESPONSIBILITY_TASK_MAP: ReadonlyArray<{
   name: Exclude<
     OrchestratorResponsibilityName,
     | 'enforceCuratedToolList'
     | 'resolveActiveCanvas'
     | 'syncStateFromCanvas'
+    | 'dispatchToolCall'
   >
   task: string
 }> = [
-  { name: 'dispatchToolCall', task: 'T15' },
   { name: 'translateElementId', task: 'T16' },
   { name: 'beginAiBatch', task: 'T17' },
   { name: 'endAiBatch', task: 'T17' },
@@ -153,11 +153,6 @@ describe('CanvasMcpOrchestrator — TODO throwers', () => {
       // Some methods are async (return Promise), some sync. Handle both.
       const invoke = () => {
         switch (name) {
-          case 'dispatchToolCall':
-            return method.call(o, {
-              name: 'noop',
-              arguments: {},
-            } as McpToolCall)
           case 'translateElementId':
             return method.call(o, 'mcp-id')
           case 'endAiBatch':
@@ -174,24 +169,6 @@ describe('CanvasMcpOrchestrator — TODO throwers', () => {
       if (name === 'handleProcessCrash') {
         // Strictly async — must reject.
         await expect(invoke()).rejects.toThrowError(expected)
-      } else if (name === 'dispatchToolCall') {
-        // Async but body throws synchronously before returning a Promise — in
-        // V8 this surfaces as a sync throw from the async fn caller. Cover
-        // both shapes.
-        try {
-          const ret = invoke()
-          if (ret && typeof (ret as Promise<unknown>).then === 'function') {
-            await expect(ret as Promise<unknown>).rejects.toThrowError(
-              expected,
-            )
-          } else {
-            // Should not happen — fail loud.
-            throw new Error('expected dispatchToolCall to return a Promise')
-          }
-        } catch (err) {
-          // Sync-throw branch (older runtimes).
-          expect((err as Error).message).toMatch(expected)
-        }
       } else {
         expect(invoke).toThrowError(expected)
       }
@@ -316,6 +293,159 @@ describe('CanvasMcpOrchestrator — syncStateFromCanvas (wired in T14)', () => {
     expect(callTool).toHaveBeenCalledTimes(1)
     expect(first).toEqual({ status: 'imported', elementCount: 1 })
     expect(second).toEqual({ status: 'skipped', reason: 'already-synced' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T15 wired method — REAL behaviour (dispatchToolCall)
+// ---------------------------------------------------------------------------
+//
+// Exhaustive gate behaviour lives in `./dispatch.test.ts`. The integration
+// assertions here only confirm that the orchestrator class WIRES THROUGH
+// correctly: passes the mcpClient, approvalGate, and threadId from `deps`,
+// and that `setThreadId` mutates the value used by subsequent calls.
+
+describe('CanvasMcpOrchestrator — dispatchToolCall (wired in T15)', () => {
+  it('rejects a blocked tool without touching mcpClient', async () => {
+    const callTool = vi.fn()
+    const approvalGate = vi.fn(async () => true)
+    const o = makeOrchestrator({
+      mcpClient: { callTool },
+      approvalGate,
+      threadId: 'thr-1',
+    })
+
+    const result = await o.dispatchToolCall({
+      name: 'export_to_image',
+      arguments: {},
+    })
+
+    expect(result).toEqual({ error: 'tool not available in this build' })
+    expect(callTool).not.toHaveBeenCalled()
+    expect(approvalGate).not.toHaveBeenCalled()
+  })
+
+  it('forwards a mutating tool to mcpClient when the gate approves', async () => {
+    const callTool = vi
+      .fn()
+      .mockResolvedValue({ content: [{ type: 'text', text: 'created' }] })
+    const approvalGate = vi.fn(async () => true)
+    const o = makeOrchestrator({
+      mcpClient: { callTool },
+      approvalGate,
+      threadId: 'thr-2',
+    })
+
+    const call: McpToolCall = {
+      name: 'create_element',
+      arguments: { type: 'rectangle' },
+    }
+    const result = await o.dispatchToolCall(call)
+
+    expect(approvalGate).toHaveBeenCalledTimes(1)
+    expect(approvalGate).toHaveBeenCalledWith(
+      'create_element',
+      'thr-2',
+      call.arguments,
+    )
+    expect(callTool).toHaveBeenCalledTimes(1)
+    expect(callTool).toHaveBeenCalledWith(call)
+    expect(result).toEqual({ content: [{ type: 'text', text: 'created' }] })
+  })
+
+  it('returns user-denied envelope when approval gate resolves false', async () => {
+    const callTool = vi.fn()
+    const approvalGate = vi.fn(async () => false)
+    const o = makeOrchestrator({
+      mcpClient: { callTool },
+      approvalGate,
+      threadId: 'thr-3',
+    })
+
+    const result = await o.dispatchToolCall({
+      name: 'clear_canvas',
+      arguments: {},
+    })
+
+    expect(result).toEqual({ error: 'user denied tool call' })
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when approvalGate is undefined for a mutating tool', async () => {
+    const callTool = vi.fn()
+    const o = makeOrchestrator({
+      mcpClient: { callTool },
+      // approvalGate intentionally omitted
+      threadId: 'thr-4',
+    })
+
+    const result = await o.dispatchToolCall({
+      name: 'create_element',
+      arguments: {},
+    })
+
+    expect(result).toEqual({
+      error: 'tool requires approval but no gate configured',
+    })
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  it('bypasses approval for readonly tools', async () => {
+    const callTool = vi
+      .fn()
+      .mockResolvedValue({ content: [{ type: 'text', text: '[]' }] })
+    const approvalGate = vi.fn(async () => false)
+    const o = makeOrchestrator({
+      mcpClient: { callTool },
+      approvalGate,
+      threadId: 'thr-5',
+    })
+
+    const result = await o.dispatchToolCall({
+      name: 'query_elements',
+      arguments: {},
+    })
+
+    expect(approvalGate).not.toHaveBeenCalled()
+    expect(callTool).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({ content: [{ type: 'text', text: '[]' }] })
+  })
+
+  it('honors setThreadId() updates for subsequent dispatches', async () => {
+    const callTool = vi
+      .fn()
+      .mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] })
+    const approvalGate = vi.fn(async () => true)
+    const o = makeOrchestrator({
+      mcpClient: { callTool },
+      approvalGate,
+      threadId: 'thr-initial',
+    })
+
+    o.setThreadId('thr-updated')
+    await o.dispatchToolCall({ name: 'create_element', arguments: {} })
+
+    expect(approvalGate).toHaveBeenCalledWith(
+      'create_element',
+      'thr-updated',
+      {},
+    )
+  })
+
+  it('catches transport throws and returns { error }', async () => {
+    const callTool = vi.fn().mockRejectedValue(new Error('socket closed'))
+    const o = makeOrchestrator({
+      mcpClient: { callTool },
+      approvalGate: async () => true,
+      threadId: 'thr-6',
+    })
+
+    const result = await o.dispatchToolCall({
+      name: 'create_element',
+      arguments: {},
+    })
+
+    expect(result).toEqual({ error: 'socket closed' })
   })
 })
 

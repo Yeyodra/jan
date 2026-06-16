@@ -1,0 +1,93 @@
+T15 — Approval-gate interaction trace
+======================================
+
+Helper:        web-app/src/lib/canvas-mcp-orchestrator/dispatch.ts
+Entry point:   dispatchExcalidrawTool(call, deps)
+Approval gate: deps.approvalGate (injected; wraps useToolApproval.getState().showApprovalModal)
+Thread id:     deps.threadId (immutable per call; mutable on orchestrator via setThreadId)
+
+Gate ordering (top-to-bottom — first failed gate short-circuits):
+
+  call ──┐
+         ▼
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │ Gate 1: EXCALIDRAW_ALLOWED_TOOLS.has(call.name)                         │
+  │   false → return { error: 'tool not available in this build' }          │
+  │           approvalGate: NOT INVOKED                                     │
+  │           mcpClient:    NOT INVOKED                                     │
+  └─────────────────────────────────────────────────────────────────────────┘
+         │ true
+         ▼
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │ Gate 2a: EXCALIDRAW_READONLY_TOOLS.has(call.name)                       │
+  │   true  → SKIP approval, jump to Gate 3                                 │
+  └─────────────────────────────────────────────────────────────────────────┘
+         │ false
+         ▼
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │ Gate 2b: requiresApproval(call.name)                                    │
+  │   true → Gate 2c                                                        │
+  │   false (defensive — should be unreachable inside allowed∖readonly)     │
+  │         → fall through to Gate 3                                        │
+  └─────────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │ Gate 2c: deps.approvalGate?                                             │
+  │   undefined → return { error: 'tool requires approval but no gate       │
+  │                                  configured' }                          │
+  │              logger.warn(...)                                           │
+  │              telemetry.increment('dispatch.approval_gate_missing')      │
+  │              mcpClient: NOT INVOKED                                     │
+  │                                                                         │
+  │   defined → await approvalGate(call.name, deps.threadId, call.arguments)│
+  │             ├─ throws  → return { error: <err.message> }                │
+  │             │            telemetry.increment('dispatch.approval_gate_   │
+  │             │                                                  threw')  │
+  │             │            mcpClient: NOT INVOKED                         │
+  │             ├─ false   → return { error: 'user denied tool call' }      │
+  │             │            telemetry.increment('dispatch.denied')         │
+  │             │            mcpClient: NOT INVOKED                         │
+  │             └─ true    → fall through to Gate 3                         │
+  └─────────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │ Gate 3: await deps.mcpClient.callTool(call)                             │
+  │   throws  → return { error: <err.message> }                             │
+  │             telemetry.increment('dispatch.transport_threw')             │
+  │                                                                         │
+  │   resolves → marshalWireResult(raw)                                     │
+  │              ├─ wire.error (string, non-empty) → { error: wire.error }  │
+  │              ├─ wire.isError === true → { error: content[0].text }      │
+  │              │                          (fallback 'tool returned an     │
+  │              │                          error' if content empty)        │
+  │              ├─ Array.isArray(wire.content) → { content: [...text-      │
+  │              │                                blocks only] }            │
+  │              └─ else → { error: 'tool returned an error' }              │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+Reuse contract with T21 (useToolApproval)
+------------------------------------------
+The dispatcher NEVER imports `useToolApproval`. The orchestrator construction
+site (T18 prompt bar) is responsible for wiring `deps.approvalGate` to:
+
+    approvalGate: (toolName, threadId, params) =>
+        useToolApproval.getState().showApprovalModal(toolName, threadId, params)
+
+`showApprovalModal` already auto-resolves `true` for:
+  - `allowAllMCPPermissions === true`
+  - `isToolApproved(threadId, toolName) === true`
+
+So the dispatcher's two-line "consult the gate" block transparently honours
+the user's existing T21 settings — no policy duplication.
+
+Test evidence
+-------------
+dispatch.test.ts:  17 tests, all pass (see test output for full trace)
+  - approval gate invocation count asserted in every relevant test
+  - mcpClient invocation count asserted in every relevant test
+  - return envelope shape asserted exactly (no extras leak through)
+index.test.ts:     7 new tests under "dispatchToolCall (wired in T15)"
+  - same matrix at the orchestrator class boundary
+Full suite:        119 tests pass (was 96 before T15)

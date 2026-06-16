@@ -76,6 +76,11 @@ import {
   type SyncLogger,
   type SyncOutcome,
 } from './active-canvas'
+import {
+  dispatchExcalidrawTool,
+  type ApprovalGateFn,
+  type DispatchMcpClientLike,
+} from './dispatch'
 
 // ---------------------------------------------------------------------------
 // Telemetry sink (skeleton stub)
@@ -169,6 +174,27 @@ export type CanvasMcpOrchestratorDeps = {
   logger?: SyncLogger
   themeProvider?: unknown
   telemetry?: TelemetrySink
+  /**
+   * T21 approval-gate function. Wraps `useToolApproval.getState()
+   * .showApprovalModal(...)` at the construction site. Function-shaped
+   * so this module never imports the zustand store. When omitted,
+   * mutating dispatch calls fail closed (see `./dispatch.ts`).
+   *
+   * Wired in T15.
+   */
+  approvalGate?: ApprovalGateFn
+  /**
+   * Active conversation thread id. Threaded into the approval gate so
+   * T21 can scope auto-approvals per thread.
+   *
+   * Either pass via constructor (preferred for long-lived orchestrators)
+   * or call `setThreadId(...)` once a session starts. The plan describes
+   * "the orchestrator receives `threadId` when a session starts" — both
+   * paths satisfy that contract.
+   *
+   * Wired in T15.
+   */
+  threadId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -214,10 +240,17 @@ export class CanvasMcpOrchestrator {
    * sync independently.
    */
   private readonly sessionToken: object = {}
+  /**
+   * Active thread id. Initialised from `deps.threadId` and mutable via
+   * `setThreadId(...)` so the orchestrator can outlive a single thread
+   * and still route approvals to the correct conversation.
+   */
+  private threadId: string | undefined
 
   constructor(deps: CanvasMcpOrchestratorDeps) {
     this.deps = deps
     this.telemetry = deps.telemetry ?? NoopTelemetry
+    this.threadId = deps.threadId
 
     // Self-check (plan §1465): every key in the responsibility registry MUST
     // resolve to a callable method on this instance. Iterate the runtime
@@ -255,16 +288,45 @@ export class CanvasMcpOrchestrator {
   }
 
   // -------------------------------------------------------------------------
-  // 2. dispatchToolCall — T15
+  // 2. dispatchToolCall — T15 (wired)
   // -------------------------------------------------------------------------
   /**
    * Gated dispatch of an MCP tool call to mcp_excalidraw. Enforces the
    * curated allow-list (T8) and approval gate (T21) before invocation.
-   * Implementation lands in T15.
+   *
+   * Delegates to the pure helper in `./dispatch` so the gate logic stays
+   * testable in isolation. The approval gate is injected via
+   * `deps.approvalGate` — when omitted, mutating calls fail closed.
+   *
+   * Never throws — failures (blocked tool, denied approval, transport
+   * error) are surfaced as `{ error: '...' }` envelopes.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async dispatchToolCall(_call: McpToolCall): Promise<McpToolResult> {
-    throw todo('dispatchToolCall', 'T15', 1569)
+  async dispatchToolCall(call: McpToolCall): Promise<McpToolResult> {
+    return dispatchExcalidrawTool(call, {
+      mcpClient: this.deps.mcpClient as DispatchMcpClientLike,
+      approvalGate: this.deps.approvalGate,
+      // Threading: prefer the live setter-updated value over the original
+      // deps slot so `setThreadId(...)` after construction takes effect.
+      threadId: this.threadId ?? '',
+      logger: this.deps.logger,
+      telemetry: this.telemetry,
+    })
+  }
+
+  // NOTE: thread id mutation lives on `setThreadId` (instance arrow,
+  // see below). It is intentionally NOT a prototype method so the
+  // "prototype owns exactly the 11 responsibility methods" reflection
+  // test in `index.test.ts` keeps passing.
+  /**
+   * Update the active thread id used by `dispatchToolCall` when threading
+   * approvals. The plan describes the orchestrator "receiving threadId
+   * when a session starts" — call this once per session.
+   *
+   * Defined as an instance arrow (assigned in the constructor) so it does
+   * NOT pollute the prototype and break the responsibility-shape test.
+   */
+  setThreadId: (threadId: string) => void = (threadId) => {
+    this.threadId = threadId
   }
 
   // -------------------------------------------------------------------------

@@ -1,0 +1,83 @@
+{
+  "task": "T15 — Tool-call dispatch with T21 approval gating reuse",
+  "branch": "feat/excalidraw-mcp",
+  "date": "2026-06-17",
+  "helper": "web-app/src/lib/canvas-mcp-orchestrator/dispatch.ts",
+  "tests": "web-app/src/lib/canvas-mcp-orchestrator/dispatch.test.ts",
+  "wired_into": "web-app/src/lib/canvas-mcp-orchestrator/index.ts (CanvasMcpOrchestrator.dispatchToolCall)",
+  "test_counts": {
+    "dispatch_helper_tests": 17,
+    "orchestrator_delegation_tests": 7,
+    "full_orchestrator_suite_before": 96,
+    "full_orchestrator_suite_after": 119
+  },
+  "scenarios": [
+    {
+      "name": "blocked_tool",
+      "input": { "name": "export_to_image", "arguments": {} },
+      "approval_gate_invoked": false,
+      "mcp_client_invoked": false,
+      "result": { "error": "tool not available in this build" },
+      "rationale": "export_to_image is in EXCALIDRAW_BLOCKED_TOOLS (requires Express front-end Jan does not run). Unknown tools (not in EXCALIDRAW_ALLOWED_TOOLS) get the same envelope — closed allow-list."
+    },
+    {
+      "name": "mutating_tool_approved",
+      "input": { "name": "create_element", "arguments": { "type": "rectangle", "x": 0, "y": 0 } },
+      "approval_gate_invoked": true,
+      "approval_gate_args": ["create_element", "<threadId>", { "type": "rectangle", "x": 0, "y": 0 }],
+      "approval_decision": true,
+      "mcp_client_invoked": true,
+      "mcp_client_args": { "name": "create_element", "arguments": { "type": "rectangle", "x": 0, "y": 0 } },
+      "wire_response": { "content": [{ "type": "text", "text": "created" }] },
+      "result": { "content": [{ "type": "text", "text": "created" }] }
+    },
+    {
+      "name": "mutating_tool_denied",
+      "input": { "name": "create_element", "arguments": { "type": "rectangle" } },
+      "approval_gate_invoked": true,
+      "approval_decision": false,
+      "mcp_client_invoked": false,
+      "result": { "error": "user denied tool call" }
+    },
+    {
+      "name": "readonly_tool",
+      "input": { "name": "query_elements", "arguments": { "filter": "all" } },
+      "approval_gate_invoked": false,
+      "mcp_client_invoked": true,
+      "wire_response": { "content": [{ "type": "text", "text": "{\"elements\":[]}" }] },
+      "result": { "content": [{ "type": "text", "text": "{\"elements\":[]}" }] },
+      "rationale": "query_elements is in EXCALIDRAW_READONLY_TOOLS — bypasses approval entirely. Even if approvalGate would resolve false, it is never consulted."
+    }
+  ],
+  "fail_closed": {
+    "trigger": "mutating tool dispatched while deps.approvalGate is undefined",
+    "result": { "error": "tool requires approval but no gate configured" },
+    "telemetry_counter": "dispatch.approval_gate_missing",
+    "logger_level": "warn",
+    "rationale": "A mutating call with no gate is an installation bug. Surface loudly via logger + telemetry; never silently auto-approve."
+  },
+  "wire_marshalling": {
+    "success_passthrough": "content array re-packed (drops extra wire fields like _meta, structured)",
+    "isError_true": "content[0].text becomes the error message; empty content falls back to 'tool returned an error'",
+    "top_level_error_string": "promoted to { error } regardless of isError",
+    "missing_content": "fallback to generic error envelope"
+  },
+  "never_throws": {
+    "transport_throw_Error": "caught, returned as { error: err.message }",
+    "transport_throw_string": "caught, returned as { error: '<string>' }",
+    "approval_gate_throws": "caught, returned as { error: err.message }",
+    "no_uncaught_promise_rejections": true
+  },
+  "type_discipline": {
+    "return_shape": "structurally compatible with McpToolResult discriminated union from ./types.ts",
+    "no_widening": "extra wire fields are dropped, not forwarded; McpToolResult union remains { content } | { error }"
+  },
+  "decoupling": {
+    "imports_react": false,
+    "imports_zustand": false,
+    "imports_useToolApproval": false,
+    "imports_router": false,
+    "imports_excalidraw": false,
+    "DI_via": "ApprovalGateFn (function-shaped), DispatchMcpClientLike (structural), DispatchLogger, DispatchTelemetry"
+  }
+}

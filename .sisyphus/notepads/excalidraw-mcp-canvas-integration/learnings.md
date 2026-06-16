@@ -464,3 +464,29 @@ Constructor iterates `Object.keys(OrchestratorResponsibility)` and asserts each 
 ### Testing pattern reused
 - Followed `web-app/src/lib/canvas/dispatch.test.ts` exactly: pure DI helpers, `vi.fn()` spies, no React, no router runtime, no Excalidraw runtime.
 - Module-level idempotency set: exposed `__resetSyncedSessionsForTests()` rather than mutating internals from tests; bun test `beforeEach` calls it.
+
+
+## T15 (2026-06-17) — tool-call dispatch with T21 approval gating
+
+### useToolApproval mechanics confirmed
+- `showApprovalModal(toolName, threadId, toolParameters?)` resolves Promise<boolean>:
+  - `true` for allow-once OR allow-always (caller doesn't need to distinguish)
+  - `true` automatically when `allowAllMCPPermissions` is on
+  - `true` automatically when `isToolApproved(threadId, toolName)` is true
+  - `false` for deny
+- The dispatcher does NOT need to re-check `isToolApproved` — the hook is the single source of truth.
+
+### Wire-shape of mcp_excalidraw tools/call
+Three error-shape variants observed across MCP servers; dispatcher handles all:
+1. `{ isError: true, content: [{type:'text', text: 'msg'}] }` — standard MCP
+2. `{ error: 'msg', content: [] }` — flat envelope (older / non-spec servers)
+3. transport throw — caught at the await site
+
+Success shape: `{ content: [{type:'text', text:'...'}] }`. Extra wire fields
+(`_meta`, `structured`, etc.) are dropped; `McpToolResult` stays narrow.
+
+### Pattern reusability — pure helper + DI
+T15 confirms the T1.5 / T14 structural-DI template scales:
+- `ApprovalGateFn` is a function type, not an object — simpler than wrapping the zustand store
+- `DispatchMcpClientLike` defined locally instead of importing from active-canvas.ts because the wire-error handling differs (T14 trusts the helper; T15 must handle three error shapes)
+- All deps are per-call (no per-session state) — this distinguishes T15 from T14's idempotency token model

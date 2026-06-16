@@ -94,3 +94,41 @@
 - Plan says "double-call of `syncStateFromCanvas` is idempotent (second is no-op)". The natural unit of "one session" is one orchestrator instance — the plan's separate Wave-4 task T17 (`beginAiBatch`/`endAiBatch`) already assumes one orchestrator per session.
 - `WeakSet<object>` lets the GC reclaim tokens once the orchestrator (and thus the session) is dropped — no manual cleanup needed.
 - The helper also accepts `string` and `symbol` tokens (Set + WeakSet hybrid) so tests can use cheap string keys without leaking `WeakSet`'s ergonomics into the test code.
+
+
+## T15 (2026-06-17) — dispatch helper design choices
+
+### Why threadId via constructor + `setThreadId` arrow (not per-call arg)
+Plan says "the orchestrator receives `threadId` when a session starts". Three options considered:
+1. Per-call arg `dispatchToolCall(call, { threadId })` — verbose at the call-site, every invocation re-supplies a value that should be session-stable.
+2. Constructor-only `deps.threadId` — read-only, can't update for orchestrators that outlive a single thread.
+3. **CHOSEN**: Constructor-injected `deps.threadId` + arrow-property `setThreadId(id)` — DI-friendly (tests pass via deps), updatable at runtime.
+
+`setThreadId` is defined as an instance arrow property (`setThreadId: (id) => void = (id) => { ... }`), NOT a prototype method, so it does not appear in `Object.getOwnPropertyNames(prototype)` and thus does not break the existing "prototype owns exactly the 11 responsibility methods" reflection test in `index.test.ts`.
+
+### Why fail-closed when approvalGate is missing
+A mutating tool reaching dispatch with no gate configured is an installation
+bug — either the integration glue forgot to wire `deps.approvalGate`, or the
+orchestrator was constructed in a non-renderer context that has no approval
+UI. Auto-approving in this state would silently bypass T21. We instead:
+- log a warn-level message (developer signal),
+- increment `dispatch.approval_gate_missing` telemetry counter,
+- return `{ error: 'tool requires approval but no gate configured' }` so the LLM observes the failure and can react.
+
+Read-only tools are unaffected — they bypass approval entirely and work even
+without a gate. So a partial wire-up (`mcpClient` set, `approvalGate`
+missing) still services queries; only mutations fail closed.
+
+### Why a separate `DispatchMcpClientLike`
+`active-canvas.ts` has `McpClientLike` whose `callTool` returns
+`Promise<McpToolResult>` (the discriminated union). The T15 dispatcher
+takes the WIRE shape (`{ content?, isError?, error?, ... }`) and produces
+the discriminated union itself. Reusing the T14 type would force the
+caller to pre-marshal — defeating the purpose of centralizing the
+wire-handling here. Two distinct types is the right separation.
+
+### Error message constants exported
+`ERR_NOT_AVAILABLE`, `ERR_USER_DENIED`, `ERR_GATE_MISSING`,
+`ERR_GENERIC_TOOL_ERROR` are all module-level exports. Tests assert
+against the constants (when convenient) but also against the literal
+strings — both surfaces remain stable contracts.

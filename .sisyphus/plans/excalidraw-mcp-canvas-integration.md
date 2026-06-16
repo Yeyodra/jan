@@ -1566,7 +1566,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `web-app/src/lib/canvas-mcp-orchestrator/active-canvas.ts`, `active-canvas.test.ts`, possibly `web-app/src/stores/canvas-store.ts` (selector only)
   - Pre-commit: `cd web-app && bun typecheck && bun test src/lib/canvas-mcp-orchestrator/`
 
-- [ ] 15. Tool-call dispatch with T21 approval gating reuse
+- [x] 15. Tool-call dispatch with T21 approval gating reuse
 
   **What to do**:
   - Implement `dispatchToolCall(call)`:
@@ -1614,11 +1614,11 @@ Max Concurrent: 5 (Wave 4)
   **Acceptance Criteria**:
 
   **TDD**:
-  - [ ] Tests: blocked tool → returns error without modal
-  - [ ] Tests: mutating tool + no prior approval → modal shown, dispatch waits
-  - [ ] Tests: deny → returns error to LLM; allow-once → proceeds; allow-always → proceeds AND sets approval state
-  - [ ] Tests: readonly tool → bypasses modal entirely
-  - [ ] `cd web-app && bun test src/lib/canvas-mcp-orchestrator/dispatch.test.ts` → PASS
+  - [x] Tests: blocked tool → returns error without modal
+  - [x] Tests: mutating tool + no prior approval → modal shown, dispatch waits
+  - [x] Tests: deny → returns error to LLM; allow-once → proceeds; allow-always → proceeds AND sets approval state
+  - [x] Tests: readonly tool → bypasses modal entirely
+  - [x] `cd web-app && bun test src/lib/canvas-mcp-orchestrator/dispatch.test.ts` → PASS
 
   **QA Scenarios (MANDATORY)**:
 
@@ -1647,8 +1647,8 @@ Max Concurrent: 5 (Wave 4)
   ```
 
   **Evidence to Capture**:
-  - [ ] `.sisyphus/evidence/task-15-approval-gate.png`
-  - [ ] `.sisyphus/evidence/task-15-blocked-short-circuit.txt`
+  - [x] `.sisyphus/evidence/task-15-approval-gate.png` — substituted with `.sisyphus/evidence/task-15-approval-flow.txt` (text trace; no live UI to screenshot until T18 wires the prompt bar)
+  - [x] `.sisyphus/evidence/task-15-blocked-short-circuit.txt` — covered by `.sisyphus/evidence/task-15-dispatch.json` scenario `blocked_tool`
 
   **Commit**: YES
   - Message: `feat(orchestrator): tool dispatch with T21 approval reuse`
