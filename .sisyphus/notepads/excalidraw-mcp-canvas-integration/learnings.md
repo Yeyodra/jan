@@ -44,3 +44,56 @@
 - No remote provider with API key configured.
 - MCP servers configured but mostly inactive (only `exa` is active).
 
+
+
+## [2026-06-16] T1.5 — Dispatcher canvas-route wiring landed
+
+**Files touched (exactly):**
+- `web-app/src/routes/threads/$threadId.tsx` (modified — 3 hunks)
+- `web-app/src/lib/canvas/dispatch.ts` (new — ~80 lines, pure helper)
+- `web-app/src/lib/canvas/dispatch.test.ts` (new — 11 vitest cases)
+- `tests/manual/t18-tools-verification.md` (appended §8 only — original preserved)
+- `.sisyphus/plans/excalidraw-mcp-canvas-integration.md` (added T1.5 note under Task 1)
+
+### Dispatcher routing pattern (after T1.5)
+
+The thread-route dispatcher at `$threadId.tsx:357-378` now has three branches plus a fallback. Each branch has a different shape:
+
+| Branch | Predicate | Resolution | Approval default |
+|---|---|---|---|
+| RAG | `ragToolNames.has(toolName)` | `serviceHub.rag().callTool({toolName, arguments, threadId, projectId, scope})` | auto-approved (built-in) |
+| Canvas (T18) | `canvasToolNames.has(toolName)` | `dispatchCanvasTool(toolName, toolCall.input)` — in-process helper | auto-approved IFF read-only; mutating set still gated |
+| MCP (remote) | `mcpToolNames.has(toolName)` | `serviceHub.mcp().callTool({toolName, arguments})` | gated through `requestApproval` |
+| Fallback | — | `{ error: "Tool '…' not found in any service", content: [] }` (added `content: []` so the TS type stays an `MCPToolCallResult`) | n/a |
+
+### MCPToolCallResult envelope shape (canonical reference)
+
+From `core/src/types/mcp/mcpEntity.ts:12-18`:
+
+```ts
+{ error: string; content: Array<{ type?: string; text: string }> }
+```
+
+The downstream consumer in `$threadId.tsx` reads `result.error` (string truthiness check) and `result.content` (passed straight to `addToolOutput({output: ...})`). So the canvas dispatcher MUST always produce both fields — never `error: ''` with `content: undefined` and never just `{ error }` without `content`. The fallback branch needed `content: []` added for this reason.
+
+### Approval-gate predicate (canonical reference)
+
+```ts
+const isAutoApproved =
+  ragToolNames.has(toolName) ||
+  (canvasToolNames.has(toolName) && !mutatingToolNames.has(toolName))
+```
+
+Two key invariants enforced by `dispatch.test.ts`:
+- `mutatingToolNames` MUST equal `{canvas_create, canvas_update, canvas_delete}` (no more, no fewer). Drift detector in the test suite.
+- `canvas_list` and `canvas_read` are the ONLY canvas tools that bypass the modal.
+
+### Helper-extraction (Option A) decision
+
+Extracted `dispatchCanvasTool` into its own pure module. Rationale: testable without standing up jsdom + zustand + the entire route tree, AND keeps `$threadId.tsx` import surface small. The optional `deps.byName` parameter exists ONLY for tests — production code never passes it. Pattern: `(deps.byName ?? canvasBuiltinToolsByName).get(toolName)`.
+
+### Test wiring tips
+
+- For canvas-store-backed tests, mock `idb-keyval` (the persist middleware imports it eagerly under jsdom — without the mock it throws on missing IndexedDB). Pattern lifted from `ai-tools.test.ts` lines 30-39.
+- Reset the store with `useCanvasStore.setState({ canvases: {} })` in `beforeEach` (NOT with `replace=true` — that strips middleware-injected state).
+- `bun test` doesn't pick up vitest's jsdom config — `bun test src/hooks/__tests__/useTools.test.ts` fails with `ReferenceError: document is not defined`. Use `npx vitest --run <path>` for anything that touches React/testing-library. `bun test` is fine for pure modules like `dispatch.test.ts` and `ai-tools.test.ts`.

@@ -317,3 +317,153 @@ Future tasks must cite `useTools.ts` + `useAppState.ts` for registry work and `$
 - Vitest output: inlined in §5 above (no separate evidence file needed; reproducible via `cd web-app && bun test src/lib/canvas/ai-tools.test.ts`)
 - Static-analysis citations: line numbers in §2, §3, §4 above
 - Real-LLM evidence: **NOT CAPTURED** — see §6 for justification. Atlas: do not request Playwright artifacts until T1.5 lands.
+
+
+---
+
+## 8. Re-verification (post-fix, T1.5)
+
+**Date:** 2026-06-16
+**Branch:** `feat/excalidraw-mcp`
+**Verdict (static + vitest portion):** **PASS**
+**Real-LLM portion:** still owed to the upcoming T1-rerun task (see §7.2).
+
+### 8.1 What changed
+
+Two surgical edits to `web-app/src/routes/threads/$threadId.tsx`, plus one new
+pure-helper module:
+
+1. **New file** `web-app/src/lib/canvas/dispatch.ts` (~80 lines). Exports
+   `dispatchCanvasTool(toolName, args, deps?) => Promise<MCPToolCallResult>`.
+   Resolves the handler through `canvasBuiltinToolsByName`, awaits it with
+   `args ?? {}`, and marshals the raw return into the
+   `{ error, content: [{ type: "text", text: JSON.stringify(...) }] }`
+   envelope. Catches handler throws and produces the matching error envelope
+   (never re-throws). Optional `deps.byName` exists only for test isolation.
+
+2. **`$threadId.tsx`** — additions only, no behavioral regressions:
+   - Imports `mutatingToolNames` from `@/lib/canvas/ai-tools` and
+     `dispatchCanvasTool` from `@/lib/canvas/dispatch`.
+   - Reads `canvasToolNames` from `useAppState.getState()` alongside the
+     existing two name sets (line 317).
+   - Approval gate (lines 330-342) is extended with an `isAutoApproved`
+     predicate: `ragToolNames.has(toolName) || (canvasToolNames.has(toolName) && !mutatingToolNames.has(toolName))`.
+     `canvas_list` and `canvas_read` now skip the modal; `canvas_create`,
+     `canvas_update`, and `canvas_delete` continue to trigger it.
+   - Routing block (lines 358-378) gains a third branch
+     `else if (canvasToolNames.has(toolName))` that calls
+     `dispatchCanvasTool(toolName, toolCall.input)`. RAG and MCP branches
+     are byte-for-byte unchanged. The fallback now returns
+     `{ error, content: [] }` so the rest of the loop's
+     `if (result.error) ... else { output: result.content }` branching
+     stays type-safe.
+
+### 8.2 Dispatcher snippet (after fix)
+
+```ts
+// $threadId.tsx:314-317
+const ragToolNames = useAppState.getState().ragToolNames
+const mcpToolNames = useAppState.getState().mcpToolNames
+const canvasToolNames = useAppState.getState().canvasToolNames
+
+// $threadId.tsx:330-342 — approval gate
+const isAutoApproved =
+  ragToolNames.has(toolName) ||
+  (canvasToolNames.has(toolName) && !mutatingToolNames.has(toolName))
+const approved = isAutoApproved
+  ? true
+  : await useToolApproval
+      .getState()
+      .requestApproval(toolCall.toolCallId, toolName, threadId)
+
+// $threadId.tsx:357-378 — routing
+if (ragToolNames.has(toolName)) {
+  result = await serviceHub.rag().callTool({ ... })
+} else if (canvasToolNames.has(toolName)) {
+  result = await dispatchCanvasTool(toolName, toolCall.input)
+} else if (mcpToolNames.has(toolName)) {
+  result = await serviceHub.mcp().callTool({ ... })
+} else {
+  result = { error: `Tool '${toolName}' not found in any service`, content: [] }
+}
+```
+
+### 8.3 Test runs
+
+#### 8.3.1 New dispatcher tests — `web-app/src/lib/canvas/dispatch.test.ts`
+
+11 tests covering: happy paths (`canvas_list`, `canvas_create`, undefined-args),
+error paths (handler throws, registry miss, zod input validation), approval-gate
+predicate (read-only auto-approved, mutating not auto-approved, RAG and unknown
+names unchanged, mutating-set drift detector), and registry alignment
+(injected-deps path proves the parameter is honored; default path proves the
+canonical map is the fallback).
+
+```
+PS C:\Users\Nazril\Documents\Projek\jan\web-app> npx vitest --run src/lib/canvas/dispatch.test.ts
+ ✓ src/lib/canvas/dispatch.test.ts (11 tests) 21ms
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+```
+
+#### 8.3.2 Existing T18 tests — still green
+
+```
+PS C:\Users\Nazril\Documents\Projek\jan\web-app> npx vitest --run src/lib/canvas/ai-tools.test.ts src/hooks/__tests__/useTools.test.ts src/lib/canvas/dispatch.test.ts
+ ✓ src/lib/canvas/dispatch.test.ts   (11 tests)
+ ✓ src/lib/canvas/ai-tools.test.ts   (19 tests)
+ ✓ src/hooks/__tests__/useTools.test.ts (7 tests)
+ Test Files  3 passed (3)
+      Tests  37 passed (37)
+```
+
+#### 8.3.3 Typecheck (web-app)
+
+```
+PS C:\Users\Nazril\Documents\Projek\jan\web-app> npx tsc --noEmit -p tsconfig.app.json
+src/components/compare/MasterPromptInput.tsx(321,7): error TS2322: ...
+src/components/compare/MasterPromptInput.tsx(325,48): error TS2339: ...
+src/components/compare/MasterPromptInput.tsx(335,45): error TS2339: ...
+```
+
+The three remaining errors are **pre-existing** and live in
+`web-app/src/components/compare/MasterPromptInput.tsx` — completely outside
+the T18 / dispatcher surface. Last touched by `308d8a9` (`feat(compare):
+multi-model side-by-side chat with attachments`), which is upstream of this
+branch. Filed-not-gating.
+
+The two files this task changed (`$threadId.tsx`, `dispatch.ts`) and the
+one file it added (`dispatch.test.ts`) all typecheck clean.
+
+#### 8.3.4 Lint
+
+```
+PS C:\Users\Nazril\Documents\Projek\jan\web-app> npx eslint src/routes/threads/$threadId.tsx src/lib/canvas/dispatch.ts
+(no output → 0 errors, 0 warnings)
+```
+
+### 8.4 What §7.2 (T1.5) item-by-item
+
+| §7.2 requirement | Status |
+|---|---|
+| Read `canvasToolNames` alongside existing two name sets | ✅ `$threadId.tsx:317` |
+| Third routing branch resolves via `canvasBuiltinToolsByName.get(...)` | ✅ via `dispatchCanvasTool` (`dispatch.ts:48-72`) |
+| Marshal raw return into `MCPToolCallResult.content` envelope | ✅ `dispatch.ts:68` (`{ type: 'text', text: JSON.stringify(raw) }`) |
+| On thrown error, populate `result.error` | ✅ `dispatch.ts:73-79` (never re-throws) |
+| Auto-approve canvas read-only tools | ✅ `$threadId.tsx:335-337` (`canvasToolNames.has && !mutatingToolNames.has`) |
+| New vitest covering the dispatcher branch | ✅ `dispatch.test.ts` (11 tests, all green) |
+| Re-run T1 with QA scenarios against live Jan | ⏳ Deferred to T1-rerun (per task spec §5; T1.5 is the prerequisite) |
+
+### 8.5 Updated verdict
+
+**T1.5 (this task):** **PASS** — dispatcher branch wired, approval gate
+extended, regression tests green, typecheck/lint clean on changed files.
+
+**Wave 2 gating:** Wave 2 (vendoring + contract types + allow-list) is now
+**unblocked from the dispatcher side**. The real-LLM end-to-end verification
+remains owed but no longer architecturally pre-determined to fail — see
+§7.2's "real-LLM run becomes meaningful" criterion, which is now satisfied.
+
+The next pickup point is the T1-rerun task (Playwright + live model) per
+plan §4.
+

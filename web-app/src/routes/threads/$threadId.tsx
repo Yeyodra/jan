@@ -52,6 +52,8 @@ import { OUT_OF_CONTEXT_SIZE, isContextOverflowMessage } from '@/utils/error'
 import { Button } from '@/components/ui/button'
 import { IconAlertCircle, IconRefresh } from '@tabler/icons-react'
 import { useToolApproval } from '@/hooks/useToolApproval'
+import { mutatingToolNames } from '@/lib/canvas/ai-tools'
+import { dispatchCanvasTool } from '@/lib/canvas/dispatch'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
@@ -312,6 +314,7 @@ function ThreadDetail() {
       // Get cached tool names from store (initialized in useTools hook)
       const ragToolNames = useAppState.getState().ragToolNames
       const mcpToolNames = useAppState.getState().mcpToolNames
+      const canvasToolNames = useAppState.getState().canvasToolNames
 
       // Process tool calls sequentially, requesting approval for each if needed
       ;(async () => {
@@ -324,8 +327,15 @@ function ThreadDetail() {
           try {
             const toolName = toolCall.toolName
 
-            // Built-in RAG tools are internal and should not require approval.
-            const approved = ragToolNames.has(toolName)
+            // Built-in RAG tools and read-only canvas tools are internal
+            // and should not require approval. Mutating canvas tools
+            // (canvas_create, canvas_update, canvas_delete) still go through
+            // the standard approval modal — see mutatingToolNames in
+            // `@/lib/canvas/ai-tools`.
+            const isAutoApproved =
+              ragToolNames.has(toolName) ||
+              (canvasToolNames.has(toolName) && !mutatingToolNames.has(toolName))
+            const approved = isAutoApproved
               ? true
               : await useToolApproval
                   .getState()
@@ -353,15 +363,21 @@ function ThreadDetail() {
                 projectId: projectId,
                 scope: projectId ? 'project' : 'thread',
               })
+            } else if (canvasToolNames.has(toolName)) {
+              // Built-in canvas tools (T18) — handler lives in-process,
+              // resolved through `canvasBuiltinToolsByName`. See
+              // `@/lib/canvas/dispatch` for the MCPToolCallResult marshalling.
+              result = await dispatchCanvasTool(toolName, toolCall.input)
             } else if (mcpToolNames.has(toolName)) {
               result = await serviceHub.mcp().callTool({
                 toolName,
                 arguments: toolCall.input,
               })
             } else {
-              // Tool not found in either service
+              // Tool not found in any service
               result = {
                 error: `Tool '${toolName}' not found in any service`,
+                content: [],
               }
             }
 
