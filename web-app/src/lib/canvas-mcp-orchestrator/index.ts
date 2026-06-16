@@ -67,6 +67,15 @@ import {
   type ElementIdMapping,
 } from './types'
 import { filterAllowedTools } from './curated-tools'
+import {
+  resolveActiveCanvas as resolveActiveCanvasImpl,
+  syncStateFromCanvas as syncStateFromCanvasImpl,
+  type CanvasStoreLike,
+  type McpClientLike,
+  type RouterLike,
+  type SyncLogger,
+  type SyncOutcome,
+} from './active-canvas'
 
 // ---------------------------------------------------------------------------
 // Telemetry sink (skeleton stub)
@@ -133,17 +142,31 @@ export type ExcalidrawElement = unknown
 /**
  * Constructor dependencies for `CanvasMcpOrchestrator`.
  *
- * - `canvasStore`  — wired in T14 to a slice of `useCanvasStore`.
+ * - `canvasStore`  — wired in T14 to a slice of `useCanvasStore`. Kept as
+ *                    `unknown` at this slot for back-compat with T13's
+ *                    construction-time tripwire test (which passes a Proxy
+ *                    that throws on any property access). The T14 methods
+ *                    that need the store (`syncStateFromCanvas`) narrow it
+ *                    to `CanvasStoreLike` at the call site.
  * - `mcpClient`    — wired in T15 to the active mcp_excalidraw transport.
+ *                    Same `unknown` rationale; narrowed at call sites in
+ *                    T14 / T15.
+ * - `router`       — optional TanStack-Router-shaped object for
+ *                    `resolveActiveCanvas`. Omit in tests that don't need
+ *                    routing; the resolver returns `null` when absent.
+ * - `logger`       — optional sync/dispatch logger. Defaults to a noop.
  * - `themeProvider`— wired in T13.x or T14 once the theme contract lands.
  * - `telemetry`    — optional; defaults to `NoopTelemetry`.
  *
- * The store/client/theme slots are typed as `unknown` deliberately. See the
- * file-header "Decoupling stance" section for the rationale.
+ * The store/client/theme slots remain `unknown` at the type level so the
+ * T13 decoupling test (which constructs the orchestrator with a tripwire
+ * Proxy) keeps passing. See the file-header "Decoupling stance" section.
  */
 export type CanvasMcpOrchestratorDeps = {
   canvasStore: unknown
   mcpClient: unknown
+  router?: RouterLike | null
+  logger?: SyncLogger
   themeProvider?: unknown
   telemetry?: TelemetrySink
 }
@@ -183,6 +206,14 @@ export class CanvasMcpOrchestrator {
   protected readonly deps: CanvasMcpOrchestratorDeps
   /** Telemetry sink, defaulted to `NoopTelemetry` when not provided. */
   protected readonly telemetry: TelemetrySink
+  /**
+   * Opaque session token used to enforce one-shot idempotency on
+   * `syncStateFromCanvas`. Each orchestrator instance owns one — that
+   * matches the "session lifetime == orchestrator lifetime" assumption.
+   * The token is a fresh object so two distinct orchestrator instances
+   * sync independently.
+   */
+  private readonly sessionToken: object = {}
 
   constructor(deps: CanvasMcpOrchestratorDeps) {
     this.deps = deps
@@ -211,11 +242,16 @@ export class CanvasMcpOrchestrator {
   // 1. resolveActiveCanvas — T14
   // -------------------------------------------------------------------------
   /**
-   * Resolve the canvas-store id of the currently active canvas, or null when
-   * no canvas is active. Implementation lands in T14.
+   * Resolve the canvas-store id of the currently active canvas, or `null`
+   * when no canvas is active or no router was injected.
+   *
+   * Delegates to the pure helper in `./active-canvas` so the logic stays
+   * testable in isolation (`active-canvas.test.ts`). The router is read
+   * via `deps.router`, which is typed `RouterLike | null` — the orchestrator
+   * itself never imports `@tanstack/react-router`.
    */
   resolveActiveCanvas(): string | null {
-    throw todo('resolveActiveCanvas', 'T14', 1480)
+    return resolveActiveCanvasImpl(this.deps.router ?? null)
   }
 
   // -------------------------------------------------------------------------
@@ -248,11 +284,25 @@ export class CanvasMcpOrchestrator {
   // -------------------------------------------------------------------------
   /**
    * Push current canvas-store state into mcp_excalidraw at session start so
-   * the server has the same scene as the renderer. Implementation lands in
-   * T14.
+   * the server has the same scene as the renderer.
+   *
+   * Returns a `SyncOutcome` (skipped / imported / failed) instead of `void`
+   * so callers and tests can introspect what happened. The plan's contract
+   * is "never throw, degrade gracefully" — the helper enforces that.
+   *
+   * Idempotency: scoped to this orchestrator instance via the per-instance
+   * `sessionToken`. The second call within the same orchestrator's lifetime
+   * returns `{ status: 'skipped', reason: 'already-synced' }` without
+   * touching the MCP transport.
    */
-  async syncStateFromCanvas(): Promise<void> {
-    throw todo('syncStateFromCanvas', 'T14', 1480)
+  async syncStateFromCanvas(): Promise<SyncOutcome> {
+    return syncStateFromCanvasImpl({
+      canvasId: this.resolveActiveCanvas(),
+      store: this.deps.canvasStore as CanvasStoreLike,
+      mcpClient: this.deps.mcpClient as McpClientLike,
+      sessionToken: this.sessionToken,
+      logger: this.deps.logger,
+    })
   }
 
   // -------------------------------------------------------------------------

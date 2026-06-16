@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { MCPTool } from '@janhq/core'
 import {
   CanvasMcpOrchestrator,
@@ -43,14 +43,25 @@ function fakeTool(name: string): MCPTool {
 
 // Expected method ↔ implementing-task pairs. Drives the parametric TODO
 // assertions below.
+//
+// T14 partial-completion note: `resolveActiveCanvas` and
+// `syncStateFromCanvas` have REAL implementations as of T14 and have moved
+// into the dedicated "real behaviour" describe block below. The remaining
+// T14 method (`applyTheme`) and the T15/T16/T17/T22 methods still throw
+// TODO and stay in this list. `handleProcessCrash` is also T14-scoped but
+// is intentionally left as a TODO thrower until the crash-restart wiring
+// lands (separate sub-task — see plan §1480 follow-ups).
 const RESPONSIBILITY_TASK_MAP: ReadonlyArray<{
-  name: Exclude<OrchestratorResponsibilityName, 'enforceCuratedToolList'>
+  name: Exclude<
+    OrchestratorResponsibilityName,
+    | 'enforceCuratedToolList'
+    | 'resolveActiveCanvas'
+    | 'syncStateFromCanvas'
+  >
   task: string
 }> = [
-  { name: 'resolveActiveCanvas', task: 'T14' },
   { name: 'dispatchToolCall', task: 'T15' },
   { name: 'translateElementId', task: 'T16' },
-  { name: 'syncStateFromCanvas', task: 'T14' },
   { name: 'beginAiBatch', task: 'T17' },
   { name: 'endAiBatch', task: 'T17' },
   { name: 'handleProcessCrash', task: 'T14' },
@@ -160,7 +171,7 @@ describe('CanvasMcpOrchestrator — TODO throwers', () => {
         }
       }
 
-      if (name === 'syncStateFromCanvas' || name === 'handleProcessCrash') {
+      if (name === 'handleProcessCrash') {
         // Strictly async — must reject.
         await expect(invoke()).rejects.toThrowError(expected)
       } else if (name === 'dispatchToolCall') {
@@ -214,6 +225,97 @@ describe('CanvasMcpOrchestrator — enforceCuratedToolList', () => {
     const o = makeOrchestrator()
     const out = o.enforceCuratedToolList([fakeTool('totally_unknown_tool')])
     expect(out).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T14 wired methods — REAL behaviour (resolveActiveCanvas + syncStateFromCanvas)
+// ---------------------------------------------------------------------------
+//
+// These two methods used to throw TODO errors; T14 wired them to the pure
+// helpers in `./active-canvas`. The exhaustive behaviour matrix lives in
+// `./active-canvas.test.ts`. The integration assertions below only confirm
+// the orchestrator class WIRES THROUGH correctly: passes the router from
+// `deps`, threads the per-instance session token, and forwards results.
+
+describe('CanvasMcpOrchestrator — resolveActiveCanvas (wired in T14)', () => {
+  it('returns null when no router is injected', () => {
+    const o = makeOrchestrator()
+    expect(o.resolveActiveCanvas()).toBeNull()
+  })
+
+  it('returns the canvasId when the injected router is on the canvas route', () => {
+    const o = makeOrchestrator({
+      router: {
+        state: {
+          matches: [
+            { routeId: '__root__', params: {} },
+            { routeId: '/canvas/$canvasId', params: { canvasId: 'cv-xyz' } },
+          ],
+        },
+      },
+    })
+    expect(o.resolveActiveCanvas()).toBe('cv-xyz')
+  })
+
+  it('returns null when the injected router is on a non-canvas route', () => {
+    const o = makeOrchestrator({
+      router: {
+        state: {
+          matches: [
+            { routeId: '__root__', params: {} },
+            { routeId: '/threads/$threadId', params: { threadId: 't-1' } },
+          ],
+        },
+      },
+    })
+    expect(o.resolveActiveCanvas()).toBeNull()
+  })
+})
+
+describe('CanvasMcpOrchestrator — syncStateFromCanvas (wired in T14)', () => {
+  it('returns the SyncOutcome from the underlying helper', async () => {
+    // No router injected, so canvas resolves to null → skip outcome.
+    const o = makeOrchestrator()
+    const outcome = await o.syncStateFromCanvas()
+    expect(outcome).toEqual({ status: 'skipped', reason: 'no-active-canvas' })
+  })
+
+  it('forwards the active canvas through to import_scene once', async () => {
+    const callTool = vi
+      .fn()
+      .mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] })
+    const o = makeOrchestrator({
+      router: {
+        state: {
+          matches: [
+            { routeId: '/canvas/$canvasId', params: { canvasId: 'cv-1' } },
+          ],
+        },
+      },
+      canvasStore: {
+        getCanvas: (id: string) =>
+          id === 'cv-1'
+            ? {
+                id: 'cv-1',
+                name: 'cv',
+                createdAt: '2026-06-17T00:00:00.000Z',
+                updatedAt: '2026-06-17T00:00:00.000Z',
+                elements: [{ id: 'el-1', type: 'rectangle' }],
+                appState: {},
+                files: {},
+              }
+            : undefined,
+      },
+      mcpClient: { callTool },
+    })
+
+    const first = await o.syncStateFromCanvas()
+    const second = await o.syncStateFromCanvas()
+
+    expect(callTool).toHaveBeenCalledTimes(1)
+    expect(first).toEqual({ status: 'imported', elementCount: 1 })
+    expect(second).toEqual({ status: 'skipped', reason: 'already-synced' })
   })
 })
 

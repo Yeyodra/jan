@@ -64,3 +64,33 @@
   gitignore semantics, blocking future vendored sidecars.
 - **Pinned dist SHA-256**: `DC1E55ED8C1CB2E2354794C8FDE34A707D3B6E9E824C617C949B550106EFA0BC`
 - **Vendored file count**: 211 files
+
+## [2026-06-17] T14 — Empty-canvas sync: short-circuit, don't propagate the wire error
+
+**Decision:** `syncStateFromCanvas` does NOT call `mcpClient.callTool({name: 'import_scene', ...})` when the active canvas has zero elements. It records a debug log (`"empty canvas"`) and returns `{ status: 'skipped', reason: 'empty-canvas' }`.
+
+**Rationale:** mcp_excalidraw's `import_scene` handler (vendored at `src-tauri/resources/mcp_excalidraw/dist/index.js:1400-1402`) throws `"No elements found in the import data"` when the elements array is empty. Our error-swallowing branch would handle that gracefully, but every empty-session start would log a known no-op error and increment failure counters. Short-circuiting BEFORE the wire call keeps telemetry clean and removes a needless round trip.
+
+**Alternative considered:** Call `import_scene` with `elements: []` and let the error branch absorb it. Rejected because (a) the error is informationally vacuous (we caused it intentionally), and (b) it adds wire latency for the no-op case.
+
+## [2026-06-17] T14 — No `getActiveCanvasId` selector added to canvas-store
+
+**Decision:** Did NOT add a `getActiveCanvasId()` selector to `web-app/src/stores/canvas-store.ts`. The plan suggested adding one "if not already present"; we audited the store and concluded the request stems from a conceptual mismatch.
+
+**Rationale:**
+1. The canvas store is a pure library/repository — it owns a `Record<string, Canvas>` keyed by id. It has no notion of "active" canvas; that concept belongs to the router.
+2. Implementing the selector would have only two shapes:
+   - **(a) Store-tracked active id** — adds a new `activeCanvasId: string | null` field plus an action to mutate it. Requires schema change. VIOLATES the plan's "no schema change" constraint and creates a second source of truth for routing state.
+   - **(b) Router-aware helper colocated with the store** — would require importing `@tanstack/react-router` from the store module, dragging React-Router into a previously framework-agnostic file. Also wrong layering.
+3. The canonical "active canvas id" reader is `resolveActiveCanvas(router)` in `web-app/src/lib/canvas-mcp-orchestrator/active-canvas.ts`. Consumers that need it import from there. One selector, one place, no duplication.
+
+**Plan checkbox:** Treated this sub-item as resolved-by-design and noted the rationale here. If a later wave really needs `getActiveCanvasId` for non-orchestrator code, we can re-export it from a router-utils module without touching the store.
+
+## [2026-06-17] T14 — Idempotency key = per-instance object token (orchestrator owns one)
+
+**Decision:** `CanvasMcpOrchestrator` allocates a fresh `private readonly sessionToken: object = {}` per instance and threads it into every `syncStateFromCanvas` call. The active-canvas helper records synced tokens in a module-scoped `WeakSet<object>`.
+
+**Rationale:**
+- Plan says "double-call of `syncStateFromCanvas` is idempotent (second is no-op)". The natural unit of "one session" is one orchestrator instance — the plan's separate Wave-4 task T17 (`beginAiBatch`/`endAiBatch`) already assumes one orchestrator per session.
+- `WeakSet<object>` lets the GC reclaim tokens once the orchestrator (and thus the session) is dropped — no manual cleanup needed.
+- The helper also accepts `string` and `symbol` tokens (Set + WeakSet hybrid) so tests can use cheap string keys without leaking `WeakSet`'s ergonomics into the test code.

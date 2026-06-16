@@ -437,3 +437,30 @@ Constructor iterates `Object.keys(OrchestratorResponsibility)` and asserts each 
 ### Curated-tool gate from day one
 
 `enforceCuratedToolList` is the ONE method with a real (one-line) implementation: `return filterAllowedTools(tools)`. This proves the skeleton is wirable end-to-end and lets T14–T17 trust the allow-list gate without re-implementing it.
+
+## [2026-06-17] T14 — Active-canvas resolution + state sync
+
+### mcp_excalidraw import_scene schema (vendored dist)
+- Source: src-tauri/resources/mcp_excalidraw/dist/index.js:613-633 (schema), :1377-1402 (handler).
+- Schema: `{ filePath?: string, data?: string, mode: 'replace' | 'merge' }` — `mode` is the only required arg.
+- `data` is a JSON string (the .excalidraw file contents) — either a raw element array OR `{ elements, appState, files, ... }` envelope.
+- Handler EXTRACTS elements via `Array.isArray(sceneData) ? sceneData : (sceneData.elements || [])`, then THROWS `"No elements found in the import data"` if length === 0. This is why T14's helper short-circuits empty arrays BEFORE the wire call (see decisions.md).
+
+### Canvas store shape recap (relevant slices)
+- `useCanvasStore` exposes a stable `get(id)` selector that returns `Canvas | undefined` — the T14 helper's `CanvasStoreLike.getCanvas` interface is structurally identical (rename only).
+- `Canvas.elements` is a `readonly CanvasElement[]` — Excalidraw's `ExcalidrawElement` array, including any `isDeleted: true` rows. We pass it straight through to `import_scene` (the server is responsible for filtering its own state).
+- No `activeCanvasId` slot exists in the store — and we did NOT add one. The active canvas is OWNED by TanStack Router; the store is a pure library/repository. See decisions.md.
+
+### TanStack Router param consumption pattern
+- Route detail file: `web-app/src/routes/canvas/.tsx`.
+- Component reads via `useParams({ from: '/canvas/' })` and then subscribes to the store: `useCanvasStore((s) => s.canvases[canvasId])`.
+- For pure helpers (no hooks): the runtime router exposes `router.state.matches[]` where each match has `{ routeId, params }`. The `routeId` for canvas detail is `/canvas/\` (literal slash + dollar-sign — TanStack derives it from the file path).
+- The active-canvas helper iterates matches so nested layouts (`/canvas/\/edit`) still resolve to the parent's `canvasId`.
+
+### Orchestrator deps slot evolution
+- T13 typed `canvasStore` and `mcpClient` as `unknown` to keep the construction-time tripwire test green.
+- T14 KEPT those as `unknown` and instead added two NEW optional slots: `router?: RouterLike | null` and `logger?: SyncLogger`. The active-canvas helper narrows `canvasStore`/`mcpClient` to `CanvasStoreLike`/`McpClientLike` at the call site — that keeps the tripwire test untouched while letting T14 wire real behavior.
+
+### Testing pattern reused
+- Followed `web-app/src/lib/canvas/dispatch.test.ts` exactly: pure DI helpers, `vi.fn()` spies, no React, no router runtime, no Excalidraw runtime.
+- Module-level idempotency set: exposed `__resetSyncedSessionsForTests()` rather than mutating internals from tests; bun test `beforeEach` calls it.
