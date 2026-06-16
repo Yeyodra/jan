@@ -28,6 +28,14 @@ export const PlatformShortcuts: ShortcutMap = {
   // Go to settings - different per platform to avoid browser "preferences" conflict
   [ShortcutAction.GO_TO_SETTINGS]: { key: ',', usePlatformMetaKey: true },
 
+  // Go to Canvas list — Ctrl/Cmd+Shift+C. Shift avoids the browser "copy"
+  // (Ctrl/Cmd+C) collision and gives us a globally available canvas hotkey.
+  [ShortcutAction.GO_TO_CANVAS]: {
+    key: 'c',
+    usePlatformMetaKey: true,
+    shiftKey: true,
+  },
+
   // Search - opens search dialog
   [ShortcutAction.SEARCH]: { key: 'k', usePlatformMetaKey: true },
 

@@ -21,6 +21,7 @@ type AppState = {
   tools: MCPTool[]
   ragToolNames: Set<string>
   mcpToolNames: Set<string>
+  canvasToolNames: Set<string>
   serverStatus: 'running' | 'stopped' | 'pending'
   abortControllers: Record<string, AbortController>
   showOutOfContextDialog?: boolean
@@ -48,6 +49,7 @@ type AppState = {
   updateTools: (tools: MCPTool[]) => void
   updateRagToolNames: (names: string[]) => void
   updateMcpToolNames: (names: string[]) => void
+  updateCanvasToolNames: (names: string[]) => void
   setAbortController: (threadId: string, controller: AbortController) => void
   clearAppState: () => void
   setOutOfContextDialog: (show: boolean) => void
@@ -84,6 +86,7 @@ export const useAppState = create<AppState>()((set) => ({
   tools: [],
   ragToolNames: new Set<string>(),
   mcpToolNames: new Set<string>(),
+  canvasToolNames: new Set<string>(),
   serverStatus: 'stopped',
   abortControllers: {},
   promptProgress: undefined,
@@ -127,6 +130,9 @@ export const useAppState = create<AppState>()((set) => ({
   },
   updateMcpToolNames: (names) => {
     set({ mcpToolNames: new Set(names) })
+  },
+  updateCanvasToolNames: (names) => {
+    set({ canvasToolNames: new Set(names) })
   },
   setServerStatus: (value) => set({ serverStatus: value }),
   setAbortController: (threadId, controller) => {

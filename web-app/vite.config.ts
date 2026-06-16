@@ -68,6 +68,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
+      'process.env.IS_PREACT': JSON.stringify('false'),
       IS_TAURI: JSON.stringify(process.env.IS_TAURI),
       IS_DEV: JSON.stringify(process.env.IS_DEV),
       IS_WEB_APP: JSON.stringify(false),

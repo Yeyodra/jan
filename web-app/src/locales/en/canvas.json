@@ -1,0 +1,167 @@
+{
+  "title": "Canvas",
+  "titlePlural": "Canvases",
+  "subtitle": "Draw, sketch, and diagram with Excalidraw",
+  "newCanvas": "New canvas",
+  "untitledCanvas": "Untitled canvas",
+  "list": {
+    "heading": "Your canvases",
+    "searchPlaceholder": "Search canvases...",
+    "sortRecent": "Recently updated",
+    "sortName": "Name",
+    "sortCreated": "Date created",
+    "openCanvas": "Open canvas",
+    "lastEdited": "Edited {{date}}",
+    "createdOn": "Created {{date}}",
+    "elementCount": "{{count}} elements",
+    "elementCount_one": "{{count}} element",
+    "elementCount_other": "{{count}} elements"
+  },
+  "empty": {
+    "title": "No canvases yet",
+    "description": "Create your first canvas to start sketching ideas, diagrams, and flows. Your work is saved locally to this device.",
+    "cta": "Create your first canvas"
+  },
+  "toolbar": {
+    "save": "Save",
+    "saved": "Saved",
+    "saving": "Saving...",
+    "rename": "Rename",
+    "delete": "Delete",
+    "duplicate": "Duplicate",
+    "exportPng": "Export PNG",
+    "exportSvg": "Export SVG",
+    "exportJson": "Export JSON",
+    "exportExcalidraw": "Export .excalidraw",
+    "importExcalidraw": "Import .excalidraw",
+    "copyImage": "Copy image",
+    "moreActions": "More actions",
+    "backToList": "Back to canvases"
+  },
+  "rename": {
+    "dialogTitle": "Rename canvas",
+    "label": "Canvas name",
+    "placeholder": "Enter a name for this canvas",
+    "submit": "Rename",
+    "cancel": "Cancel"
+  },
+  "delete": {
+    "dialogTitle": "Delete canvas",
+    "confirm": "Delete \"{{name}}\"? This action cannot be undone.",
+    "confirmGeneric": "Delete this canvas? This action cannot be undone.",
+    "submit": "Delete",
+    "cancel": "Cancel"
+  },
+  "duplicate": {
+    "suffix": "(copy)",
+    "successToast": "Canvas duplicated"
+  },
+  "shortcuts": {
+    "goToCanvas": "Go to Canvas",
+    "manualSave": "Save now",
+    "exportPng": "Export PNG",
+    "back": "Back to canvases",
+    "savedToast": "Canvas saved"
+  },
+  "import": {
+    "dialogTitle": "Import canvas",
+    "description": "Select an .excalidraw file to import as a new canvas.",
+    "selectFile": "Select file",
+    "successToast": "Canvas imported",
+    "buttonLabel": "Import .excalidraw"
+  },
+  "export": {
+    "pngSuccess": "PNG exported to {{path}}",
+    "svgSuccess": "SVG exported to {{path}}",
+    "jsonSuccess": "Canvas exported to {{path}}",
+    "copyImageSuccess": "Canvas image copied to clipboard",
+    "exportingPng": "Exporting PNG...",
+    "exportingSvg": "Exporting SVG...",
+    "exportingJson": "Exporting JSON...",
+    "downloadDesktopOnly": "File export is available in the desktop app only"
+  },
+  "errors": {
+    "loadFailed": "Failed to load canvas",
+    "loadFailedDescription": "Something went wrong while loading this canvas. Try reopening it from the list.",
+    "listLoadFailed": "Failed to load canvas library",
+    "saveFailed": "Failed to save canvas",
+    "saveFailedDescription": "Your changes could not be saved. Please try again.",
+    "exportFailed": "Export failed",
+    "exportPngFailed": "Failed to export PNG",
+    "exportSvgFailed": "Failed to export SVG",
+    "exportJsonFailed": "Failed to export JSON",
+    "clipboardFailed": "Could not copy image to clipboard",
+    "clipboardUnsupported": "Clipboard image copy is not supported in this environment",
+    "importParseError": "That file is not a valid Excalidraw canvas",
+    "importReadError": "Failed to read the selected file",
+    "deleteFailed": "Failed to delete canvas",
+    "renameFailed": "Failed to rename canvas",
+    "createFailed": "Failed to create canvas",
+    "canvasNotFound": "Canvas not found",
+    "canvasNotFoundDescription": "This canvas no longer exists, or the link is invalid. It may have been deleted from another window.",
+    "boundaryTitle": "Something went wrong with this canvas",
+    "boundaryDescription": "An unexpected error stopped the canvas from rendering. Your saved data is safe — try again or head back to your library.",
+    "tryAgain": "Try again",
+    "backToList": "Back to canvas list"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "save": "Save canvas",
+    "newCanvas": "New canvas",
+    "exportPng": "Export as PNG",
+    "exportSvg": "Export as SVG",
+    "back": "Back to canvas list",
+    "modifierMeta": "Cmd",
+    "modifierCtrl": "Ctrl"
+  },
+  "status": {
+    "unsavedChanges": "Unsaved changes",
+    "allChangesSaved": "All changes saved",
+    "loading": "Loading canvas...",
+    "elementsSelected_one": "{{count}} element selected",
+    "elementsSelected_other": "{{count}} elements selected"
+  },
+  "sidebar": {
+    "navLabel": "Canvas",
+    "navTooltip": "Open canvas library"
+  },
+  "aiTools": {
+    "approvalTitle": "Canvas tool request",
+    "canvasList": {
+      "label": "List canvases",
+      "description": "Lists all canvases in your local library, returning each canvas's id, name, last-modified time, and element count. Read-only and does not modify any canvas."
+    },
+    "canvasCreate": {
+      "label": "Create canvas",
+      "description": "Creates a new canvas with the provided name and optional initial Excalidraw scene. Returns the new canvas id. Requires your approval before running.",
+      "approvalDetail": "The assistant wants to create a new canvas named \"{{name}}\"."
+    },
+    "canvasRead": {
+      "label": "Read canvas",
+      "description": "Reads the Excalidraw scene (elements and app state) of the canvas with the given id. Read-only."
+    },
+    "canvasUpdate": {
+      "label": "Update canvas",
+      "description": "Replaces or patches the Excalidraw scene of an existing canvas. Requires your approval before running.",
+      "approvalDetail": "The assistant wants to update canvas \"{{name}}\"."
+    },
+    "canvasDelete": {
+      "label": "Delete canvas",
+      "description": "Permanently deletes the canvas with the given id. Requires your approval before running.",
+      "approvalDetail": "The assistant wants to delete canvas \"{{name}}\". This action cannot be undone."
+    },
+    "argCanvasId": "Canvas id",
+    "argCanvasName": "Canvas name",
+    "argScene": "Scene data",
+    "argMode": "Update mode",
+    "modeReplace": "Replace",
+    "modePatch": "Patch"
+  },
+  "unsavedDialog": {
+    "title": "Unsaved changes",
+    "description": "You have unsaved changes on this canvas. Save before leaving?",
+    "save": "Save and leave",
+    "discard": "Discard changes",
+    "cancel": "Stay on canvas"
+  }
+}

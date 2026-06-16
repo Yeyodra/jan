@@ -8,6 +8,21 @@ import { PlatformShortcuts, ShortcutAction } from '@/lib/shortcuts'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 
+/**
+ * Returns true when the user is currently typing into an editable surface.
+ * Used to skip *navigational* global shortcuts so they don't steal keystrokes
+ * from chat/search/rename inputs (T23 negative scenario).
+ */
+function isTypingInEditableElement(): boolean {
+  if (typeof document === 'undefined') return false
+  const el = document.activeElement as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  if (el.isContentEditable) return true
+  return false
+}
+
 export function KeyboardShortcutsProvider() {
   const { open, setLeftPanel } = useLeftPanel()
   const { setOpen: setSearchOpen } = useSearchDialog()
@@ -20,6 +35,7 @@ export function KeyboardShortcutsProvider() {
   const newProjectShortcut = PlatformShortcuts[ShortcutAction.NEW_PROJECT]
   const settingsShortcut = PlatformShortcuts[ShortcutAction.GO_TO_SETTINGS]
   const searchShortcut = PlatformShortcuts[ShortcutAction.SEARCH]
+  const canvasShortcut = PlatformShortcuts[ShortcutAction.GO_TO_CANVAS]
 
   // Toggle Sidebar
   useKeyboardShortcut({
@@ -68,6 +84,17 @@ export function KeyboardShortcutsProvider() {
     ...searchShortcut,
     callback: () => {
       setSearchOpen(true)
+    },
+  })
+
+  // Go to Canvas — Ctrl/Cmd+Shift+C. Skip while the user is typing in an
+  // editable element so the shortcut doesn't steal keystrokes from chat /
+  // search / rename inputs.
+  useKeyboardShortcut({
+    ...canvasShortcut,
+    callback: () => {
+      if (isTypingInEditableElement()) return
+      router.navigate({ to: route.canvas })
     },
   })
 
