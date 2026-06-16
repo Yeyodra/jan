@@ -308,3 +308,14 @@ Combining A + B gives both compile-time contract assertion AND runtime catch for
 
 ### Rule for future contract tests in this project
 Never use the `.toHaveProperty(...).toEqualTypeOf(...)` chain. Always Pattern A (full-shape) for per-field type checks, optionally paired with Pattern B for runtime confidence.
+
+## T6 - NOTICE attribution (MIT) — 2026-06-16 23:42
+
+- Top-level NOTICE did NOT pre-exist; CREATED from scratch.
+- Header mirrors Jan's LICENSE preamble (project name + Menlo Research copyright + Apache-2.0 grant) so the new NOTICE matches house style.
+- Third-Party section uses `### mcp_excalidraw` heading for future extensibility.
+- Exact copyright line used: `Copyright (c) 2024 MCP Excalidraw Server (yctimlin <c22647809@gmail.com>)`.
+  - Source: `src-tauri/resources/mcp_excalidraw/LICENSE` line 3 verbatim (`Copyright (c) 2024 MCP Excalidraw Server`).
+  - Author/email appended from `src-tauri/resources/mcp_excalidraw/package.json` `author` field (`yctimlin` / `c22647809@gmail.com`) for precise attribution to the upstream maintainer.
+- Verified vendored LICENSE preserved unmodified — `git log --follow` shows only T5's commit `62a71fe30`.
+- Evidence: `.sisyphus/evidence/task-6-notice-check.txt`.

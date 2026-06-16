@@ -1,0 +1,26 @@
+Jan
+
+Copyright 2025 Menlo Research
+
+This product includes software developed by Menlo Research (https://menlo.ai).
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+------------------------------------------------------------------------------
+
+## Third-Party Components
+
+This product bundles third-party components governed by their own license
+terms. The components listed below are redistributed with Jan; their original
+license texts are preserved alongside the vendored sources as required.
+
+### mcp_excalidraw
+
+Copyright (c) 2024 MCP Excalidraw Server (yctimlin <c22647809@gmail.com>)
+Licensed under the MIT License.
+Source: https://github.com/yctimlin/mcp_excalidraw at c12ff87f6d607ccac7b217ae415bee8d855a067e
+Full license text: src-tauri/resources/mcp_excalidraw/LICENSE
