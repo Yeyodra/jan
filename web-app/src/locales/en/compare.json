@@ -1,0 +1,43 @@
+{
+  "title": "Compare",
+  "subtitle": "Send one prompt to multiple models in parallel",
+  "selectModels": "Select models (2–6)",
+  "masterPrompt": "Master prompt",
+  "masterPromptPlaceholder": "Type a prompt to send to all selected models…",
+  "sendAll": "Send All",
+  "stopAll": "Stop All",
+  "stopColumn": "Stop",
+  "removeColumn": "Remove model",
+  "removeColumnConfirm": "Remove this model? Its conversation will be lost.",
+  "export": "Export as Markdown",
+  "exportSuccess": "Exported to {{path}}",
+  "exportFailed": "Export failed",
+  "exportUnavailable": "Available in desktop app only",
+  "clearAll": "Clear all",
+  "clearAllConfirm": "Clear all columns and conversation history?",
+  "emptyColumn": "Waiting for prompt...",
+  "errorPrefix": "Error: ",
+  "openPreview": "Open preview",
+  "metrics": {
+    "ttft": "TTFT",
+    "totalTime": "Total",
+    "outputTokens": "tokens"
+  },
+  "duplicateModelToast": "That model is already in your comparison",
+  "minModelsHint": "Select at least 2 models",
+  "ariaLiveStreaming": "{{model}} is streaming",
+  "ariaLiveDone": "{{model}} finished",
+  "attachments": {
+    "menuLabel": "Add attachment",
+    "addImage": "Add image",
+    "addAudio": "Add audio",
+    "addDocument": "Add document",
+    "remove": "Remove attachment",
+    "errorImageType": "Only PNG/JPEG images are accepted",
+    "errorImageSize": "Images must be 10MB or smaller",
+    "errorAudioType": "Only WAV/MP3 audio is accepted",
+    "errorAudioSize": "Audio must be 25MB or smaller",
+    "docsUnavailable": "File picker is available in the desktop app only",
+    "docsError": "Failed to open file picker"
+  }
+}

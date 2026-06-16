@@ -269,6 +269,14 @@ export const processAttachmentsForSend = async (
         continue
       }
 
+      // Caller explicitly opted into inline-only (e.g. Compare, which has no
+      // per-column retrieval). If parsing failed, surface the error instead of
+      // silently falling back to embeddings — the model would otherwise never
+      // see the document content.
+      if (parsePreference === 'inline' && !parsedContent) {
+        throw new Error(`Failed to parse ${doc.name} for inline use`)
+      }
+
       // Default: ingest as embeddings.
       // Also reached when targetMode is 'inline' but parsedContent is absent
       // (i.e. parsing failed above) — intentional: embeddings is the safe fallback.

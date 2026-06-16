@@ -1,0 +1,29 @@
+{
+  "title": "Compare",
+  "subtitle": "Send one prompt to multiple models in parallel",
+  "selectModels": "Select models (2–6)",
+  "masterPrompt": "Master prompt",
+  "masterPromptPlaceholder": "Type a prompt to send to all selected models…",
+  "sendAll": "Send All",
+  "stopAll": "Stop All",
+  "stopColumn": "Stop",
+  "removeColumn": "Remove model",
+  "removeColumnConfirm": "Remove this model? Its conversation will be lost.",
+  "export": "Export as Markdown",
+  "exportSuccess": "Exported to {{path}}",
+  "exportFailed": "Export failed",
+  "exportUnavailable": "Available in desktop app only",
+  "clearAll": "Clear all",
+  "clearAllConfirm": "Clear all columns and conversation history?",
+  "emptyColumn": "Waiting for prompt...",
+  "errorPrefix": "Error: ",
+  "metrics": {
+    "ttft": "TTFT",
+    "totalTime": "Total",
+    "outputTokens": "tokens"
+  },
+  "duplicateModelToast": "That model is already in your comparison",
+  "minModelsHint": "Select at least 2 models",
+  "ariaLiveStreaming": "{{model}} is streaming",
+  "ariaLiveDone": "{{model}} finished"
+}

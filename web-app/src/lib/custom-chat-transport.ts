@@ -550,10 +550,35 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private continueFromContent: string | null = null
   /** Latest user message text — used by the MCP orchestrator for tool routing. */
   private lastUserMessage = ''
+  /** Optional per-instance model identity. When set, `sendMessages` resolves
+   *  the model from this pair INSTEAD of the global `useModelProvider`
+   *  selection. Required by Compare (RF-1) where every column owns its own
+   *  model and the global slot is unrelated. Undefined = legacy global path. */
+  private modelOverride?: { provider: ModelProvider; modelId: string }
+  /** Optional override for the AI SDK `streamText.maxRetries` argument.
+   *  Compare passes 0 (RF-10: no retry pollution). Undefined = SDK default (2). */
+  private maxRetries?: number
+  /** When true, skip `stripUnsupportedImageParts` and forward all message
+   *  parts to the model regardless of declared capabilities. Compare uses
+   *  this so user-attached images reach every column's model verbatim;
+   *  model-side capability handling becomes the user's responsibility.
+   *  Defaults to undefined → existing strip behavior preserved. */
+  private forceSendAllParts?: boolean
 
-  constructor(systemMessage?: string, threadId?: string) {
+  constructor(
+    systemMessage?: string,
+    threadId?: string,
+    options?: {
+      modelOverride?: { provider: ModelProvider; modelId: string }
+      maxRetries?: number
+      forceSendAllParts?: boolean
+    }
+  ) {
     this.systemMessage = systemMessage
     this.threadId = threadId
+    this.modelOverride = options?.modelOverride
+    this.maxRetries = options?.maxRetries
+    this.forceSendAllParts = options?.forceSendAllParts
     this.serviceHub = useServiceStore.getState().serviceHub
     // Tools will be loaded when updateRagToolsAvailability is called with model capabilities
   }
@@ -835,10 +860,19 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Capture the effective provider name early so the Anthropic serial
     // tool-use repair later uses the same value that was used to create the
     // model, even if the user switches provider mid-request.
-    const modelId = useModelProvider.getState().selectedModel?.id
-    const providerId = useModelProvider.getState().selectedProvider
+    // Prefer the per-instance override (Compare path) over the global
+    // singleton (regular threads path). When `modelOverride` is undefined the
+    // legacy global behavior is preserved verbatim.
+    const modelId =
+      this.modelOverride?.modelId ??
+      useModelProvider.getState().selectedModel?.id
+    const providerId =
+      this.modelOverride?.provider.provider ??
+      useModelProvider.getState().selectedProvider
     const effectiveProviderName = providerId
-    const provider = useModelProvider.getState().getProviderByName(providerId)
+    const provider =
+      this.modelOverride?.provider ??
+      useModelProvider.getState().getProviderByName(providerId)
     if (!this.serviceHub || !modelId || !provider) {
       throw new Error('ServiceHub not initialized or model/provider missing.')
     }
@@ -846,13 +880,24 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     this.lastUserMessage = extractLatestUserText(options.messages)
 
     try {
-      const updatedProvider = useModelProvider
-        .getState()
-        .getProviderByName(providerId)
+      // When `modelOverride` is set the column's own provider is authoritative
+      // — re-resolving via the global store would re-introduce the bug. The
+      // global lookup is preserved for the legacy threads path so any
+      // mid-request provider edits (api_key rotation, etc.) still flow in.
+      const updatedProvider = this.modelOverride
+        ? this.modelOverride.provider
+        : useModelProvider.getState().getProviderByName(providerId)
 
       const inferenceParams = this.getActiveInferenceParams()
 
-      const selectedModel = useModelProvider.getState().selectedModel
+      // Same reasoning for `selectedModel`: the override's model object lives
+      // on its own provider; the global `selectedModel` may be a different
+      // model entirely (Compare's whole point).
+      const selectedModel = this.modelOverride
+        ? (this.modelOverride.provider.models.find(
+            (m) => m.id === this.modelOverride!.modelId
+          ) ?? null)
+        : useModelProvider.getState().selectedModel
       const reasoningParams = buildLlamacppReasoningParams(
         effectiveProviderName,
         selectedModel?.settings?.reasoning?.controller_props?.value as
@@ -1037,7 +1082,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
 
     const modelSupportsVision =
-      selectedModel?.capabilities?.includes('vision') ?? false
+      this.forceSendAllParts ||
+      (selectedModel?.capabilities?.includes('vision') ?? false)
     const baseMessages = await convertToModelMessages(
       coalesceMessagesForAlternation(
         resolveOrphanToolCalls(
@@ -1076,6 +1122,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       toolChoice: shouldEnableTools ? 'auto' : undefined,
       system: effectiveSystem,
       ...(maxOutputTokens !== undefined ? { maxTokens: maxOutputTokens } : {}),
+      ...(this.maxRetries !== undefined ? { maxRetries: this.maxRetries } : {}),
     })
 
     let tokensPerSecond = 0
