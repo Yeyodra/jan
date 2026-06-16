@@ -33,6 +33,10 @@ import {
   BotIcon,
   type BotIconHandle,
 } from '@/components/animated-icon/bot'
+import {
+  CompareIcon,
+  type CompareIconHandle,
+} from '@/components/animated-icon/compare'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 import { SearchDialog } from '@/containers/dialogs/SearchDialog'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
@@ -49,6 +53,7 @@ type AnimatedIconHandle =
   | SettingsIconHandle
   | BlocksIconHandle
   | BotIconHandle
+  | CompareIconHandle
 
 type NavMainItem = {
   title: string
@@ -127,6 +132,11 @@ const getNavMainItems = (
     title: 'common:hub',
     url: route.hub.index,
     animatedIcon: BlocksIcon,
+  },
+  {
+    title: 'compare:title',
+    url: route.compare,
+    animatedIcon: CompareIcon,
   },
   {
     title: 'common:settings',
