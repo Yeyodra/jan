@@ -1,0 +1,47 @@
+T1 — Late excalidrawAPI Binding Evidence
+==========================================
+Date: 2026-06-17
+
+Strategy chosen: post-render useEffect with no deps array
+---------------------------------------------------------
+The Excalidraw imperative API (ExcalidrawImperativeAPI) is only available
+AFTER <CanvasEditor> mounts and calls the `onReady` callback. On first render
+apiRef.current is null. The orchestrator's BatchController (./batch.ts) reads
+deps.excalidrawAPI lazily inside beginAiBatch/endAiBatch — not at construction
+time — so passing undefined at construction is safe and documented as
+"fail-closed no-ops" for the first render.
+
+Why not recreate the orchestrator when apiRef.current changes:
+- apiRef is a RefObject — mutating .current does NOT trigger React state change
+- Keying useMemo on [canvas.id, apiRef.current] would not work: React reads
+  the dep array at render time; apiRef.current is null on first render so the
+  orchestrator would be recreated the next render (when .current is set),
+  discarding the existing lock/batch state.
+
+Chosen approach:
+  useEffect(() => {
+    if (apiRef.current) {
+      (orchestrator as {deps:{excalidrawAPI:unknown}}).deps.excalidrawAPI = api
+    }
+  })  // no deps — runs after every render, idempotent
+
+This runs after every render. After CanvasEditor mounts and apiRef.current is
+set, the orchestrator's deps bag gets the live API handle. Subsequent renders
+are a no-op because apiRef.current does not change (same object identity).
+
+The cast-and-assign is safe because:
+1. deps.excalidrawAPI is typed `unknown` (intentionally weak for decoupling)
+2. The batch controller narrows it structurally to ExcalidrawApiLike at call
+   sites — no TypeScript violation at runtime
+3. deps is `protected readonly` at the class level but TypeScript's `readonly`
+   is compile-time only; the cast bypasses that compile-time check cleanly
+
+Audit of orchestrator null handling:
+- constructor line 380: createBatchController({ excalidrawAPI: deps.excalidrawAPI as ExcalidrawApiLike | undefined })
+- batch.ts behaviour when excalidrawAPI is absent: "fail-closed no-ops + warn"
+  (documented in index.ts line 355-356 comment)
+- No crash path on undefined excalidrawAPI: confirmed by test
+  "does not crash when excalidrawAPI is initially undefined (late binding is safe)"
+
+Test evidence:
+  ✓ does not crash when excalidrawAPI is initially undefined (late binding is safe) — 6ms

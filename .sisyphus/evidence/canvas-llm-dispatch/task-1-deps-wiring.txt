@@ -1,0 +1,35 @@
+T1 — Orchestrator Deps Wiring Evidence
+=======================================
+Date: 2026-06-17
+Test file: web-app/src/routes/canvas/__tests__/canvasId.test.tsx
+
+Test run output (bunx vitest run):
+
+ RUN  v3.2.4
+
+ ✓ src/routes/canvas/__tests__/canvasId.test.tsx (11 tests) 148ms
+   ✓ /canvas/$canvasId — toggle ON > renders CanvasPromptBar when Settings > MCP > excalidraw is active 73ms
+   ✓ /canvas/$canvasId — toggle ON > mounts the indicator overlay region 9ms
+   ✓ /canvas/$canvasId — toggle OFF > does NOT render prompt bar / indicator / lock banner when toggle is off 5ms
+   ✓ /canvas/$canvasId — existing canvas-loading behaviour > passes the canvas elements as the initial scene to CanvasEditor 5ms
+   ✓ /canvas/$canvasId — existing canvas-loading behaviour > forwards viewModeEnabled=false by default (lock not held) 8ms
+   ✓ /canvas/$canvasId — orchestrator deps wiring (T1) > constructs CanvasMcpOrchestrator exactly once per mount 6ms
+   ✓ /canvas/$canvasId — orchestrator deps wiring (T1) > passes canvasStore, mcpClient, router, and logger to the constructor 7ms
+   ✓ /canvas/$canvasId — orchestrator deps wiring (T1) > passes threadId: undefined (canvas has no thread) 6ms
+   ✓ /canvas/$canvasId — orchestrator deps wiring (T1) > does NOT recreate the orchestrator on an unrelated re-render 19ms
+   ✓ /canvas/$canvasId — orchestrator deps wiring (T1) > mcpClient adapter forwards call.name as toolName to serviceHub.mcp().callTool 7ms
+   ✓ /canvas/$canvasId — orchestrator deps wiring (T1) > does not crash when excalidrawAPI is initially undefined (late binding is safe) 6ms
+
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+   Start at  20:44:36
+   Duration  2.57s
+
+Typecheck (tsc -b --noEmit):
+  Zero new errors introduced in changed files.
+  Pre-existing errors in unrelated files (CanvasAiIndicator.tsx, CanvasManualEditLockBanner.tsx,
+  MasterPromptInput.tsx) were already present before this task.
+
+Changed files:
+  - web-app/src/routes/canvas/$canvasId.tsx
+  - web-app/src/routes/canvas/__tests__/canvasId.test.tsx

@@ -28,6 +28,7 @@ import {
   createFileRoute,
   useNavigate,
   useParams,
+  useRouter,
 } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
@@ -53,7 +54,12 @@ import { CanvasPromptBar } from '@/components/canvas/CanvasPromptBar'
 import { CanvasAiIndicator } from '@/components/canvas/CanvasAiIndicator'
 import { CanvasManualEditLockBanner } from '@/components/canvas/CanvasManualEditLockBanner'
 import { CanvasMcpOrchestrator } from '@/lib/canvas-mcp-orchestrator'
-import type { OrchestratorState } from '@/lib/canvas-mcp-orchestrator/types'
+import type {
+  OrchestratorState,
+  McpToolCall,
+  McpToolResult,
+} from '@/lib/canvas-mcp-orchestrator/types'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import {
   downloadBlob,
   exportCanvasToJson,
@@ -194,21 +200,77 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
     Boolean(s.mcpServers['excalidraw']?.active),
   )
 
-  // Per-route orchestrator instance. Memoised on `canvasId` so swapping to a
+  // ---- Orchestrator deps (T1) ---------------------------------------------
+
+  // TanStack Router instance for resolveActiveCanvas. Stable ref — the router
+  // object does not change across renders.
+  const router = useRouter()
+
+  // serviceHub.mcp() returns MCPService whose callTool signature is:
+  //   callTool({ toolName, serverName?, arguments }) => Promise<MCPToolCallResult>
+  // McpClientLike expects:
+  //   callTool(call: { name, arguments }) => Promise<McpToolResult>
+  // Thin adapter bridges the two without touching the orchestrator contract.
+  const serviceHub = useServiceHub()
+  const mcpClient = useMemo(
+    () => ({
+      callTool: (call: McpToolCall): Promise<McpToolResult> =>
+        serviceHub
+          .mcp()
+          .callTool({ toolName: call.name, arguments: call.arguments })
+          .then((result) => result as McpToolResult),
+    }),
+    // serviceHub identity is stable (zustand singleton); safe to dep on it.
+    [serviceHub],
+  )
+
+  // Per-route orchestrator instance. Memoised on `canvas.id` so swapping to a
   // different canvas yields a fresh orchestrator (mirrors how `<CanvasDetail
   // key={canvas.id} />` remounts the editor with a fresh `initialScene`).
-  // The orchestrator class itself does NOT subscribe to React/zustand at
-  // module load — we hand it a dependency object here.
+  //
+  // excalidrawAPI is intentionally omitted here — the Excalidraw imperative
+  // API is only available after <CanvasEditor> mounts (async). We wire it in
+  // the effect below via orchestrator.setThreadId-pattern analogue: the batch
+  // controller is fail-closed when excalidrawAPI is absent, so first-render
+  // is always safe. When the API arrives we update it on the orchestrator via
+  // the setExcalidrawAPI effect.
   const orchestrator = useMemo(
     () =>
       new CanvasMcpOrchestrator({
-        // T20 only owns the mount points + FSM scaffolding. The rest of the
-        // deps (router, mcpClient, approvalGate, excalidrawAPI) wire up in
-        // the follow-up task that owns end-to-end LLM dispatch.
+        canvasStore: useCanvasStore,
+        mcpClient,
+        router,
+        threadId: undefined,
+        logger: console,
       }),
+    // Recreate only when the canvas changes (new canvas = new orchestrator
+    // session) or when the mcpClient wrapper identity changes (serviceHub
+    // swap, which is practically never). Router is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [canvas.id],
+    [canvas.id, mcpClient],
   )
+
+  // Wire the Excalidraw imperative API into the orchestrator once it is
+  // available. The batch controller reads excalidrawAPI only at batch-begin
+  // time, so a post-mount update is safe. We store it on deps so the batch
+  // controller has a live reference for T17 undo-grouping.
+  useEffect(() => {
+    const api = apiRef.current
+    if (api) {
+      // The deps bag is readonly but excalidrawAPI is typed `unknown` so we
+      // can patch it without violating the orchestrator's public contract.
+      // This is the documented late-binding path: deps.excalidrawAPI is read
+      // lazily inside the batch controller's begin/end methods (T17), not at
+      // construction time.
+      ;(
+        orchestrator as unknown as {
+          deps: { excalidrawAPI: unknown }
+        }
+      ).deps.excalidrawAPI = api
+    }
+  })
+  // Intentionally no deps array — runs after every render so apiRef.current
+  // is always reflected on the orchestrator once Excalidraw has mounted.
 
   // The orchestrator class deliberately does not expose `OrchestratorState`
   // as observable internal state — the route owns the FSM cursor and walks

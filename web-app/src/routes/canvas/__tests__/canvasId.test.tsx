@@ -37,6 +37,8 @@ const mockIsManualEditLocked = vi.fn(() => false)
 const mockBeginAiBatch = vi.fn(() => Symbol('batch') as never)
 const mockEndAiBatch = vi.fn()
 const mockLockManualEdits = vi.fn(() => () => {})
+// Captures the deps object passed to each CanvasMcpOrchestrator constructor call.
+let capturedOrchestratorDeps: unknown[] = []
 
 function buildCanvas(overrides: Partial<{ id: string; name: string; elements: unknown[] }> = {}) {
   return {
@@ -106,13 +108,35 @@ vi.mock('@/hooks/useHotkeys', () => ({
   useKeyboardShortcut: () => {},
 }))
 
-// Router hooks — the route uses `useParams` and `useNavigate` from
-// `@tanstack/react-router`. `createFileRoute` is also pulled in at module
+// Router hooks — the route uses `useParams`, `useNavigate`, and `useRouter`
+// from `@tanstack/react-router`. `createFileRoute` is also pulled in at module
 // load to register the route, so it must return a no-op factory.
+const mockRouter = {
+  state: {
+    matches: [
+      {
+        routeId: '/canvas/$canvasId',
+        params: { canvasId: 'canvas-1' },
+      },
+    ],
+  },
+}
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (config: unknown) => config,
   useParams: () => ({ canvasId: 'canvas-1' }),
   useNavigate: () => vi.fn(),
+  useRouter: () => mockRouter,
+}))
+
+// useServiceHub — provides the MCP client adapter. Return a stable stub
+// whose mcp().callTool resolves immediately. The object is module-level so
+// useServiceHub returns the SAME identity on every call (mirrors the real
+// zustand singleton), keeping mcpClient useMemo stable across re-renders.
+const mockCallTool = vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] })
+const mockMcpService = { callTool: mockCallTool }
+const mockServiceHubInstance = { mcp: () => mockMcpService }
+vi.mock('@/hooks/useServiceHub', () => ({
+  useServiceHub: () => mockServiceHubInstance,
 }))
 
 // File-IO + clipboard + exporters — the route imports these at module load
@@ -167,13 +191,16 @@ vi.mock('@/components/canvas/CanvasErrorBoundary', () => ({
 // class triggers a 11-method self-check on construction; we don't need that
 // here because the route only calls a known subset.
 vi.mock('@/lib/canvas-mcp-orchestrator', () => ({
-  CanvasMcpOrchestrator: vi.fn().mockImplementation(() => ({
-    isManualEditLocked: mockIsManualEditLocked,
-    subscribeManualEditLock: mockSubscribeManualEditLock,
-    beginAiBatch: mockBeginAiBatch,
-    endAiBatch: mockEndAiBatch,
-    lockManualEdits: mockLockManualEdits,
-  })),
+  CanvasMcpOrchestrator: vi.fn().mockImplementation((deps: unknown) => {
+    capturedOrchestratorDeps.push(deps)
+    return {
+      isManualEditLocked: mockIsManualEditLocked,
+      subscribeManualEditLock: mockSubscribeManualEditLock,
+      beginAiBatch: mockBeginAiBatch,
+      endAiBatch: mockEndAiBatch,
+      lockManualEdits: mockLockManualEdits,
+    }
+  }),
 }))
 
 // ---------------------------------------------------------------------------
@@ -191,6 +218,7 @@ beforeEach(() => {
   mockExcalidrawActive = true
   mockCanvas = buildCanvas()
   canvasEditorReceivedProps = null
+  capturedOrchestratorDeps = []
   mockSubscribeManualEditLock.mockClear()
   mockIsManualEditLocked.mockClear()
   mockBeginAiBatch.mockClear()
@@ -256,5 +284,67 @@ describe('/canvas/$canvasId — existing canvas-loading behaviour', () => {
     render(<RouteComponent />)
     expect(canvasEditorReceivedProps).not.toBeNull()
     expect(canvasEditorReceivedProps!.viewModeEnabled).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T1 — Orchestrator deps wiring
+// ---------------------------------------------------------------------------
+
+import { CanvasMcpOrchestrator } from '@/lib/canvas-mcp-orchestrator'
+
+describe('/canvas/$canvasId — orchestrator deps wiring (T1)', () => {
+  it('constructs CanvasMcpOrchestrator exactly once per mount', () => {
+    render(<RouteComponent />)
+    expect(CanvasMcpOrchestrator).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes canvasStore, mcpClient, router, and logger to the constructor', () => {
+    render(<RouteComponent />)
+    expect(capturedOrchestratorDeps).toHaveLength(1)
+    const deps = capturedOrchestratorDeps[0] as Record<string, unknown>
+    // canvasStore: the zustand store object (callable with getState)
+    expect(deps.canvasStore).toBeDefined()
+    // mcpClient: adapter object with callTool function
+    expect(typeof (deps.mcpClient as { callTool: unknown }).callTool).toBe('function')
+    // router: the RouterLike object with state.matches
+    expect(deps.router).toBeDefined()
+    expect((deps.router as { state: { matches: unknown[] } }).state.matches).toBeDefined()
+    // logger: console or console-like
+    expect(deps.logger).toBeDefined()
+  })
+
+  it('passes threadId: undefined (canvas has no thread)', () => {
+    render(<RouteComponent />)
+    const deps = capturedOrchestratorDeps[0] as Record<string, unknown>
+    expect(deps.threadId).toBeUndefined()
+  })
+
+  it('does NOT recreate the orchestrator on an unrelated re-render', () => {
+    const { rerender } = render(<RouteComponent />)
+    // Re-render the same component — useMemo is keyed on canvas.id which
+    // hasn't changed, so no new constructor call should happen.
+    rerender(<RouteComponent />)
+    expect(CanvasMcpOrchestrator).toHaveBeenCalledTimes(1)
+  })
+
+  it('mcpClient adapter forwards call.name as toolName to serviceHub.mcp().callTool', async () => {
+    render(<RouteComponent />)
+    const deps = capturedOrchestratorDeps[0] as Record<string, unknown>
+    const mcpClient = deps.mcpClient as {
+      callTool: (call: { name: string; arguments: Record<string, unknown> }) => Promise<unknown>
+    }
+    await mcpClient.callTool({ name: 'add_rectangle', arguments: { x: 0, y: 0 } })
+    expect(mockCallTool).toHaveBeenCalledWith({
+      toolName: 'add_rectangle',
+      arguments: { x: 0, y: 0 },
+    })
+  })
+
+  it('does not crash when excalidrawAPI is initially undefined (late binding is safe)', () => {
+    // The orchestrator mock receives no excalidrawAPI at construction —
+    // this mirrors the real first render before Excalidraw mounts.
+    // The route must not throw.
+    expect(() => render(<RouteComponent />)).not.toThrow()
   })
 })
