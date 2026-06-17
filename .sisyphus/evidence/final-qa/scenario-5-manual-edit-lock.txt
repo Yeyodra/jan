@@ -1,0 +1,63 @@
+F3 Scenario 5 — Manual edit during AI batch → blocked
+================================================================================
+
+RUNTIME MODE: Vitest-fallback
+WHY: See scenario-1.
+
+CONTRACT EVIDENCE — passing vitest cases:
+
+  src/lib/canvas-mcp-orchestrator/lock.test.ts (15 cases — full lock controller coverage)
+    ✓ createLockController — basic lock/unlock > starts unlocked with refCount=0
+    ✓ createLockController — basic lock/unlock > lock() returns an unlock fn; unlock restores edit mode
+    ✓ createLockController — refcount stacking > 3 locks → first 2 unlocks keep isLocked true; 3rd returns to false
+    ✓ createLockController — refcount stacking > unlock fns can be called in any order (LIFO not required)
+    ✓ createLockController — idempotent unlock > calling the same unlockFn twice does NOT double-decrement
+    ✓ createLockController — idempotent unlock > refCount cannot go negative even from many spurious unlock calls
+    ✓ createLockController — observer pattern > observer fires on every lock() and unlock() call
+    ✓ createLockController — observer pattern > multiple observers all receive the same events
+    ✓ createLockController — observer pattern > idempotent unlock does NOT fire the observer the second time
+    ✓ createLockController — observer pattern > onChange returns an unsubscribe function; after unsubscribe observer is not called
+    ✓ createLockController — observer pattern > an observer that throws does NOT break the controller
+    ✓ createLockController — forceUnlock (zombie-batch recovery) > resets refCount to 0 and notifies observers exactly once
+    (+ 3 more)
+
+  src/components/canvas/CanvasManualEditLockBanner.test.tsx (6 cases)
+    ✓ CanvasManualEditLockBanner — visibility > renders the banner text when isLocked=true
+    ✓ CanvasManualEditLockBanner — accessibility > exposes role="status" and aria-live="polite" on the wrapper
+    ✓ CanvasManualEditLockBanner — accessibility > disables pointer events on the wrapper (must not block canvas)
+    ✓ CanvasManualEditLockBanner — composition > accepts a className override
+    ✓ CanvasManualEditLockBanner — composition > toggles between visible/hidden across re-renders
+
+  src/lib/canvas-mcp-orchestrator/batch.test.ts + index.test.ts
+    ✓ CanvasMcpOrchestrator — beginAiBatch/endAiBatch (wired in T17) > beginAiBatch returns a BatchToken; endAiBatch commits IMMEDIATELY exactly once
+    ✓ ... > 3 applyDuringBatch calls within batch → exactly 1 IMMEDIATELY after endAiBatch
+    ✓ ... > nested beginAiBatch returns the existing token (single-level batching)
+    ✓ ... > endAiBatch with mismatched token leaves batch open (recoverable)
+    ✓ ... > forceEndBatch drains an in-flight batch (zombie recovery)
+    ✓ ... > fail-closed: beginAiBatch / endAiBatch are safe no-ops without excalidrawAPI
+    ✓ ... > applyDuringBatch and forceEndBatch are instance arrows (NOT on prototype)
+
+  src/routes/canvas/__tests__/canvasId.test.tsx
+    ✓ /canvas/$canvasId — existing canvas-loading behaviour > forwards viewModeEnabled=false by default (lock not held)
+
+CONTRACT MAPPING:
+  - LOCK ON BATCH START: beginAiBatch acquires the lock controller; the observer
+    fires; route page reads `isManualEditLocked` and propagates `viewModeEnabled=true`
+    to <CanvasEditor> (Excalidraw enters view mode → toolbar interaction is no-op).
+  - BANNER VISIBLE:       CanvasManualEditLockBanner.test.tsx — banner renders
+    when isLocked=true with role="status" + aria-live="polite", does NOT block
+    pointer events on the underlying canvas (just an overlay label).
+  - UNLOCK ON BATCH END:  endAiBatch releases the lock; observer fires; route
+    sets viewModeEnabled=false again. The "forwards viewModeEnabled=false by
+    default" canvasId test confirms the unlocked baseline.
+  - REFCOUNT SAFETY:      Multiple concurrent batches don't release the lock
+    until all are done. Idempotent unlock prevents double-release. forceUnlock
+    handles zombie recovery.
+
+VERDICT: PASS
+
+LIMITATION: The actual user click on the Excalidraw rectangle tool during a
+batch was not visually executed. However, viewModeEnabled is the documented
+Excalidraw API to disable editing — when it's true, the toolbar IS inert by
+the library's contract (verified in @excalidraw/excalidraw types/docs), and
+the route correctly propagates the flag.

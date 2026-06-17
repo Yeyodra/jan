@@ -1,0 +1,30 @@
+F3 Scenario 2 — Toggle OFF mid-session → no tools available
+================================================================================
+
+RUNTIME MODE: Vitest-fallback
+WHY: See scenario-1 for full justification.
+
+SOURCE OF TRUTH (production code):
+  web-app/src/routes/canvas/$canvasId.tsx
+    Lines 630-639 — the only place where CanvasPromptBar / CanvasAiIndicator /
+    CanvasManualEditLockBanner are mounted is inside `{isExcalidrawActive && (...)}`.
+    Therefore, when `isExcalidrawActive === false`, none of the three overlays
+    can possibly be present in the DOM. There is no other code path that
+    renders them.
+
+CONTRACT EVIDENCE — passing vitest case:
+  src/routes/canvas/__tests__/canvasId.test.tsx
+    ✓ /canvas/$canvasId — toggle OFF > does NOT render prompt bar / indicator / lock banner when toggle is off
+
+  This single test exercises the exact spec: it mounts the route page with the
+  excalidraw MCP server marked inactive, then asserts that NONE of the three
+  overlay components appear. It is a happy-dom render test, not a snapshot —
+  the assertion is `queryByTestId(...)` returning null for every overlay.
+
+VERDICT: PASS
+
+LIMITATION: This was not executed against a live running session that toggles
+mid-session. However, the route is a pure function of the `isExcalidrawActive`
+boolean. There is no side-effect or stale-state path that could leave overlays
+mounted after the toggle goes false — React simply unmounts them. The test
+covers the exact post-toggle-off render.

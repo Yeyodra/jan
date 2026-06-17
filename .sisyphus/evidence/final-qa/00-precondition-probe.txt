@@ -1,0 +1,43 @@
+﻿F3 Manual QA — Precondition Probe Evidence
+Run timestamp: 2026-06-15 23:25:44 +07:00
+
+LOCAL PROVIDERS PROBED:
+  llama.cpp router  http://localhost:57335/v1/models  -> HTTP 200 OK (running)
+                    models present: Jan-v3.5-4B-Q4_K_XL (chat, status=unloaded)
+                                    sentence-transformer-mini (embedding, status=unloaded)
+  LM Studio         http://localhost:1234/v1/models   -> timeout (no server)
+  Ollama            http://localhost:11434/api/tags   -> timeout (no server)
+  llama.cpp:8080    http://localhost:8080/v1/models   -> timeout (no server)
+  Jan local API     http://localhost:1337/v1/models   -> timeout (no server)
+
+REMOTE PROVIDERS (predefined in web-app/src/constants/providers.ts):
+  openai, azure, openrouter, mistral, groq, xai, gemini, minimax, huggingface, nvidia, generic-provider
+  
+  Configured API keys in C:\Users\Nazril\AppData\Roaming\jan\data: NONE FOUND
+  (extension settings searched: only llamacpp_* keys and MCP/exa configs present)
+  Tauri keychain (provider-api-keys module) not directly inspectable from outside the app, but absence of any
+  per-provider settings JSON suggests no remote providers are configured.
+
+CHAT-CAPABLE MODELS AVAILABLE TO COMPARE FEATURE:
+  - Jan-v3.5-4B-Q4_K_XL (1 model, 1 provider)
+
+PLAN LOCK CONSTRAINTS (web-app/src/components/compare/ModelMultiSelector.tsx):
+  MIN_MODELS = 2 (Send All disabled below this)
+  MAX_MODELS = 6
+  Selector dedupes by (provider, model id) — same model cannot be added twice.
+
+CONCLUSION:
+  Network layer: previous-run blocker resolved (llama-server now reachable, HTTP 200).
+  But effective provider population: 1 chat model. Compare feature minimum: 2 distinct models.
+
+F3 MANDATORY SCENARIOS THAT CANNOT BE EXECUTED:
+  #3 Cross-task integration with 6 models      -> needs 6 distinct models, only 1 available
+  #4 Provider-error mock (1 of 3 errors,       -> needs 3 distinct reachable providers; only 1
+     other 2 finish independently)                available; mocking ALL 3 with Playwright would
+                                                  defeat the spec ("OTHER 2 providers still need
+                                                  to be reachable") and would not exercise real
+                                                  streaming behavior of the in-app code path.
+  #2 Happy path (3 models)                     -> needs 3 models, only 1 available
+
+  F3 directive line: "Do NOT mark APPROVE without running the provider-error-mock scenario — it is mandatory."
+  Therefore APPROVE is structurally unattainable in the current environment.

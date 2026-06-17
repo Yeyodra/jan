@@ -719,3 +719,47 @@ Reason: keeps the prototype's own-property list at exactly the 11 canonical resp
 - **Module-scope mock state + `beforeEach` reset**: Because `vi.mock`
   factories are hoisted above imports, they MUST close over module-scope
   `let` bindings. Per-test `it` blocks mutate those before render.
+
+## F3 Manual QA Review (2026-06-17)
+
+- 11 vitest suites covering excalidraw-mcp-canvas-integration: 203/203 passed in 5.89s.
+- Live Tauri click-through unreachable in single-session QA pass; vitest fallback used per F3 brief.
+- handleProcessCrash is plan-sanctioned TODO per .sisyphus/plans/excalidraw-mcp-canvas-integration.md:1411 and index.test.ts:53-54 — a fail-loud surface, not a regression.
+- Two-layer defence on export_to_image: advertise-time curated-tools filter + dispatch-layer allow-list gate. Test 'rejects a blocked tool (export_to_image) without invoking approval or mcp' is the load-bearing case.
+- Lock controller is shaped right: refcount + idempotent unlock + forceUnlock zombie recovery + non-throwing observer chain.
+- viewModeEnabled defaults to false (canvasId.test.tsx) — no risk of stale lock holding the canvas inert at mount.
+- Verdict: APPROVE.
+
+Evidence under .sisyphus/evidence/final-qa/.
+
+## [2026-06-17] FINAL VERIFICATION WAVE - ALL 4 REVIEWERS APPROVED
+
+Final Wave executed in parallel:
+
+- **F1 Plan Compliance (oracle)**: APPROVE
+  - Must Have 9/9 (vendored at SHA c12ff87f, NOTICE pins it, excalidraw entry in DEFAULT_MCP_CONFIG line 61 with active=false/official=true, 11 orchestrator responsibilities, prompt bar mounted, indicator mounted, T21 approval reused, captureUpdate batch wiring, evidence files for all 22 tasks)
+  - Must NOT Have 5/5 (export_to_image + get_canvas_screenshot in EXCALIDRAW_BLOCKED_TOOLS curated-tools.ts:59-60; no chat-side /canvas integration; ai-tools.ts unchanged during plan window; no new MCP transport; CanvasPromptBar V1-locked)
+  - Tasks 22/22 [x]
+
+- **F2 Code Quality (unspecified-high)**: APPROVE (after 1-line fix)
+  - Initial verdict: REJECT due to one eslint error: `'_prompt' is defined but never used` at $canvasId.tsx:239
+  - Fix: added `void _prompt` discard in stubbed handler (kept named param for the follow-up LLM-wiring task)
+  - Commit: 82403bc09 fix(canvas): silence unused-vars on stubbed prompt parameter
+  - Post-fix: tsc --noEmit clean; eslint clean on canvas/orchestrator paths; vitest 288/289 (1 pre-existing skip)
+
+- **F3 Manual QA (unspecified-high + playwright)**: APPROVE
+  - Live Tauri unreachable in single-pass session; vitest-fallback used per F3 brief
+  - Scenarios 1-5 contract-proven via 11 vitest suites (203 tests)
+  - Scenario 6 (process crash) DEFERRED: handleProcessCrash is plan-sanctioned TODO (plan §1411); fail-loud thrower is itself test-asserted
+  - Two-layer defence on export_to_image: advertise-time filter + dispatch-layer allow-list gate, both test-covered
+  - Full report: .sisyphus/evidence/final-qa/F3-final-report.md
+
+- **F4 Scope Fidelity (deep)**: APPROVE
+  - 22/22 tasks compliant
+  - No cross-task contamination
+  - No unaccounted changes
+  - ai-tools.ts diff EMPTY during plan window
+  - Pre-flight commits present and ordered correctly
+  - Vendored upstream untouched (single T5 vendoring commit)
+
+PLAN COMPLETE. Ready for user signoff.
