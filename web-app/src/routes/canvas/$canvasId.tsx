@@ -241,6 +241,9 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
       // only owns the route mount points and FSM scaffolding. Here we walk
       // the state machine and the batch / lock so the wiring contract
       // (indicator + banner light up while a "session" runs) is honoured.
+      // Discard the prompt — the follow-up task will read it; this keeps
+      // the parameter named (not just an underscore) for future readers.
+      void _prompt
       setOrchestratorState('spawning')
       const token = orchestrator.beginAiBatch()
       const unlock = orchestrator.lockManualEdits()
