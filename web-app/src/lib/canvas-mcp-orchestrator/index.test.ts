@@ -44,12 +44,12 @@ function fakeTool(name: string): MCPTool {
 // Expected method ↔ implementing-task pairs. Drives the parametric TODO
 // assertions below.
 //
-// T14/T15/T16/T17 partial-completion note: `resolveActiveCanvas`,
+// T14/T15/T16/T17/T22 partial-completion note: `resolveActiveCanvas`,
 // `syncStateFromCanvas`, `dispatchToolCall`, `translateElementId`,
-// `translateToolResult`, `beginAiBatch`, and `endAiBatch` have REAL
-// implementations as of T14/T15/T16/T17 and have moved into the dedicated
-// "real behaviour" describe blocks below. The remaining T14 method
-// (`applyTheme`) and the T22 method still throw TODO and stay in this list.
+// `translateToolResult`, `beginAiBatch`, `endAiBatch`, and
+// `lockManualEdits` have REAL implementations and have moved into their
+// dedicated "real behaviour" describe blocks below. The remaining T14
+// method (`applyTheme`) is the only public method that still throws TODO.
 // `handleProcessCrash` is also T14-scoped but is intentionally left as a
 // TODO thrower until the crash-restart wiring lands (separate sub-task —
 // see plan §1480 follow-ups).
@@ -64,12 +64,12 @@ const RESPONSIBILITY_TASK_MAP: ReadonlyArray<{
     | 'translateToolResult'
     | 'beginAiBatch'
     | 'endAiBatch'
+    | 'lockManualEdits'
   >
   task: string
 }> = [
   { name: 'handleProcessCrash', task: 'T14' },
   { name: 'applyTheme', task: 'T14' },
-  { name: 'lockManualEdits', task: 'T22' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -654,6 +654,115 @@ describe('CanvasMcpOrchestrator — beginAiBatch/endAiBatch (wired in T17)', () 
     // But MUST exist on the instance.
     expect(typeof o.applyDuringBatch).toBe('function')
     expect(typeof o.forceEndBatch).toBe('function')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// lockManualEdits — REAL behaviour (wired in T22)
+// ---------------------------------------------------------------------------
+//
+// The exhaustive behaviour matrix lives in `./lock.test.ts`. The integration
+// assertions here only confirm the orchestrator class WIRES THROUGH
+// correctly: `lockManualEdits()` delegates to the lock controller, the new
+// instance-arrow methods (`isManualEditLocked`, `subscribeManualEditLock`)
+// are present and do NOT pollute the prototype, and `endAiBatch` ALWAYS
+// drains the lock as part of its commit (auto-unlock per plan §2186-2187).
+
+describe('CanvasMcpOrchestrator — lockManualEdits (wired in T22)', () => {
+  it('lockManualEdits returns an unlock fn; calling it restores edit mode', () => {
+    const o = makeOrchestrator()
+    expect(o.isManualEditLocked()).toBe(false)
+
+    const unlock = o.lockManualEdits()
+    expect(typeof unlock).toBe('function')
+    expect(o.isManualEditLocked()).toBe(true)
+
+    unlock()
+    expect(o.isManualEditLocked()).toBe(false)
+  })
+
+  it('refcount stacking: 3 locks → first 2 unlocks keep locked; 3rd restores', () => {
+    const o = makeOrchestrator()
+    const u1 = o.lockManualEdits()
+    const u2 = o.lockManualEdits()
+    const u3 = o.lockManualEdits()
+    expect(o.isManualEditLocked()).toBe(true)
+
+    u1()
+    expect(o.isManualEditLocked()).toBe(true)
+    u2()
+    expect(o.isManualEditLocked()).toBe(true)
+    u3()
+    expect(o.isManualEditLocked()).toBe(false)
+  })
+
+  it('idempotent unlock: calling the same unlockFn twice does NOT double-decrement', () => {
+    const o = makeOrchestrator()
+    const u1 = o.lockManualEdits()
+    const u2 = o.lockManualEdits()
+
+    u1()
+    u1() // no-op
+    expect(o.isManualEditLocked()).toBe(true)
+
+    u2()
+    expect(o.isManualEditLocked()).toBe(false)
+  })
+
+  it('subscribeManualEditLock fires on every refcount change and returns unsubscribe', () => {
+    const o = makeOrchestrator()
+    const observer = vi.fn()
+    const unsubscribe = o.subscribeManualEditLock(observer)
+
+    const u1 = o.lockManualEdits() // event 1
+    const u2 = o.lockManualEdits() // event 2
+    u1() // event 3
+    u2() // event 4
+
+    expect(observer).toHaveBeenCalledTimes(4)
+    expect(observer.mock.calls[0]).toEqual([true, 1])
+    expect(observer.mock.calls[3]).toEqual([false, 0])
+
+    unsubscribe()
+    o.lockManualEdits()
+    expect(observer).toHaveBeenCalledTimes(4) // not called again
+  })
+
+  it('endAiBatch auto-unlocks the manual-edit lock (plan §2186-2187)', () => {
+    const updateScene = vi.fn()
+    const o = makeOrchestrator({ excalidrawAPI: { updateScene } })
+
+    o.lockManualEdits()
+    o.lockManualEdits()
+    expect(o.isManualEditLocked()).toBe(true)
+
+    const token = o.beginAiBatch()
+    o.endAiBatch(token)
+
+    // forceUnlock under the hood — refcount drained even though we never
+    // called the original unlockFns.
+    expect(o.isManualEditLocked()).toBe(false)
+  })
+
+  it('endAiBatch on an idle lock is still safe (no-op forceUnlock)', () => {
+    const updateScene = vi.fn()
+    const o = makeOrchestrator({ excalidrawAPI: { updateScene } })
+
+    const token = o.beginAiBatch()
+    expect(() => o.endAiBatch(token)).not.toThrow()
+    expect(o.isManualEditLocked()).toBe(false)
+  })
+
+  it('isManualEditLocked and subscribeManualEditLock are instance arrows (NOT on prototype)', () => {
+    const o = makeOrchestrator()
+    const proto = Object.getPrototypeOf(o) as object
+    const protoNames = Object.getOwnPropertyNames(proto)
+    // Must NOT pollute prototype — keeps the 11-method reflection invariant.
+    expect(protoNames).not.toContain('isManualEditLocked')
+    expect(protoNames).not.toContain('subscribeManualEditLock')
+    // But MUST exist on the instance.
+    expect(typeof o.isManualEditLocked).toBe('function')
+    expect(typeof o.subscribeManualEditLock).toBe('function')
   })
 })
 

@@ -2178,7 +2178,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `web-app/src/routes/settings/mcp-servers.tsx` (label adjustment if needed), test file
   - Pre-commit: `cd web-app && bun typecheck && bun test src/routes/settings/`
 
-- [ ] 22. Manual edit lock during AI batch
+- [x] 22. Manual edit lock during AI batch
 
   **What to do**:
   - Implement `lockManualEdits()` in orchestrator: returns an `unlockFn`

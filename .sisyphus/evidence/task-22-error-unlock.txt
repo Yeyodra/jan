@@ -1,0 +1,91 @@
+# T22 evidence -- auto-unlock on batch error / endAiBatch and forceUnlock
+# Captured: 2026-06-17T01:18:55Z
+# Plan reference: .sisyphus/plans/excalidraw-mcp-canvas-integration.md - Task 22 (lines 2181-2267)
+# QA Scenario: 'Unlock function is called on batch error' (plan section 2248-2256)
+#
+# Coverage in this run:
+#   - lock.test.ts: 15 tests (incl. 3 forceUnlock zombie-batch-recovery cases)
+#   - index.test.ts: 46 orchestrator tests (incl. 'endAiBatch auto-unlocks the manual-edit lock')
+#   - CanvasManualEditLockBanner.test.tsx: 6 banner tests
+# Total: 67/67 passed
+#
+# Command: vitest --run src/lib/canvas-mcp-orchestrator/lock.test.ts src/lib/canvas-mcp-orchestrator/index.test.ts src/components/canvas/CanvasManualEditLockBanner.test.tsx --reporter=verbose
+# Working dir: web-app/
+#
+# === verbatim vitest output ===
+
+ RUN  v3.2.4 C:/Users/Nazril/Documents/Projek/jan/web-app
+
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — basic lock/unlock > starts unlocked with refCount=0 3ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — basic lock/unlock > lock() returns an unlock fn; unlock restores edit mode 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — refcount stacking > 3 locks → first 2 unlocks keep isLocked true; 3rd returns to false 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — refcount stacking > unlock fns can be called in any order (LIFO not required) 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — idempotent unlock > calling the same unlockFn twice does NOT double-decrement 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — idempotent unlock > refCount cannot go negative even from many spurious unlock calls 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — observer pattern > observer fires on every lock() and unlock() call 2ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — observer pattern > multiple observers all receive the same events 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — observer pattern > idempotent unlock does NOT fire the observer the second time 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — observer pattern > onChange returns an unsubscribe function; after unsubscribe observer is not called 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — observer pattern > an observer that throws does NOT break the controller 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — forceUnlock (zombie-batch recovery) > resets refCount to 0 and notifies observers exactly once 2ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — forceUnlock (zombie-batch recovery) > forceUnlock when already idle is a safe no-op (no observer fire) 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — forceUnlock (zombie-batch recovery) > previously-issued unlockFns are inert after forceUnlock 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/lock.test.ts > createLockController — module hygiene > does not import React, zustand, or @excalidraw/excalidraw at module load 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — construction > constructs with a minimal deps bag 4ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — construction > defaults telemetry to NoopTelemetry when omitted 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — construction > exposes ALL 11 responsibilities as functions on the instance 2ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — construction > reflection: prototype owns exactly the 11 responsibility methods 3ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — construction > self-check throws when a required method is missing 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — TODO throwers > handleProcessCrash() throws a TODO error referencing T14 2ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — TODO throwers > applyTheme() throws a TODO error referencing T14 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — enforceCuratedToolList > filters out blocked tools (export_to_image) and keeps allowed ones 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — enforceCuratedToolList > returns an empty array when given an empty array 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — enforceCuratedToolList > drops unknown tools (closed allow-list) 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — resolveActiveCanvas (wired in T14) > returns null when no router is injected 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — resolveActiveCanvas (wired in T14) > returns the canvasId when the injected router is on the canvas route 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — resolveActiveCanvas (wired in T14) > returns null when the injected router is on a non-canvas route 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — syncStateFromCanvas (wired in T14) > returns the SyncOutcome from the underlying helper 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — syncStateFromCanvas (wired in T14) > forwards the active canvas through to import_scene once 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — dispatchToolCall (wired in T15) > rejects a blocked tool without touching mcpClient 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — dispatchToolCall (wired in T15) > forwards a mutating tool to mcpClient when the gate approves 2ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — dispatchToolCall (wired in T15) > returns user-denied envelope when approval gate resolves false 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — dispatchToolCall (wired in T15) > fails closed when approvalGate is undefined for a mutating tool 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — dispatchToolCall (wired in T15) > bypasses approval for readonly tools 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — dispatchToolCall (wired in T15) > honors setThreadId() updates for subsequent dispatches 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — dispatchToolCall (wired in T15) > catches transport throws and returns { error } 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — translateElementId (wired in T16) > allocates a canvas id on first contact and is idempotent on repeat 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — translateElementId (wired in T16) > reverseTranslateElementId returns the original mcp id 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — translateElementId (wired in T16) > registerUserElement makes a user-created id reverse-translatable as identity 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — translateElementId (wired in T16) > uses crypto.randomUUID-style default when generateId is omitted 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — translateToolResult (wired in T16) > returns [noop] for an error envelope 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — translateToolResult (wired in T16) > produces an `add` mutation for a create_element wire result with translated id 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — translateToolResult (wired in T16) > translateToolResultByName bypasses prose sniffing 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — translateToolResult (wired in T16) > shares the same IdTranslator across translateElementId and translateToolResult 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — beginAiBatch/endAiBatch (wired in T17) > beginAiBatch returns a BatchToken; endAiBatch commits IMMEDIATELY exactly once 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — beginAiBatch/endAiBatch (wired in T17) > 3 applyDuringBatch calls within batch → exactly 1 IMMEDIATELY after endAiBatch 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — beginAiBatch/endAiBatch (wired in T17) > nested beginAiBatch returns the existing token (single-level batching) 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — beginAiBatch/endAiBatch (wired in T17) > endAiBatch with mismatched token leaves batch open (recoverable) 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — beginAiBatch/endAiBatch (wired in T17) > forceEndBatch drains an in-flight batch (zombie recovery) 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — beginAiBatch/endAiBatch (wired in T17) > fail-closed: beginAiBatch / endAiBatch are safe no-ops without excalidrawAPI 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — beginAiBatch/endAiBatch (wired in T17) > applyDuringBatch and forceEndBatch are instance arrows (NOT on prototype) 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — lockManualEdits (wired in T22) > lockManualEdits returns an unlock fn; calling it restores edit mode 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — lockManualEdits (wired in T22) > refcount stacking: 3 locks → first 2 unlocks keep locked; 3rd restores 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — lockManualEdits (wired in T22) > idempotent unlock: calling the same unlockFn twice does NOT double-decrement 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — lockManualEdits (wired in T22) > subscribeManualEditLock fires on every refcount change and returns unsubscribe 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — lockManualEdits (wired in T22) > endAiBatch auto-unlocks the manual-edit lock (plan §2186-2187) 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — lockManualEdits (wired in T22) > endAiBatch on an idle lock is still safe (no-op forceUnlock) 1ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — lockManualEdits (wired in T22) > isManualEditLocked and subscribeManualEditLock are instance arrows (NOT on prototype) 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — decoupling > does not reach into deps.canvasStore or deps.mcpClient at construction 0ms
+ ✓ src/lib/canvas-mcp-orchestrator/index.test.ts > CanvasMcpOrchestrator — decoupling > does not import React, zustand, or Excalidraw at module load 2ms
+ ✓ src/components/canvas/CanvasManualEditLockBanner.test.tsx > CanvasManualEditLockBanner — visibility > renders nothing when isLocked=false 33ms
+ ✓ src/components/canvas/CanvasManualEditLockBanner.test.tsx > CanvasManualEditLockBanner — visibility > renders the banner text when isLocked=true 25ms
+ ✓ src/components/canvas/CanvasManualEditLockBanner.test.tsx > CanvasManualEditLockBanner — accessibility > exposes role="status" and aria-live="polite" on the wrapper 62ms
+ ✓ src/components/canvas/CanvasManualEditLockBanner.test.tsx > CanvasManualEditLockBanner — accessibility > disables pointer events on the wrapper (must not block canvas) 7ms
+ ✓ src/components/canvas/CanvasManualEditLockBanner.test.tsx > CanvasManualEditLockBanner — composition > accepts a className override 8ms
+ ✓ src/components/canvas/CanvasManualEditLockBanner.test.tsx > CanvasManualEditLockBanner — composition > toggles between visible/hidden across re-renders 5ms
+
+ Test Files  3 passed (3)
+      Tests  67 passed (67)
+   Start at  08:18:26
+   Duration  2.33s (transform 339ms, setup 1.29s, collect 630ms, tests 198ms, environment 2.47s, prepare 594ms)
+

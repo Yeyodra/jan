@@ -34,7 +34,7 @@
  *   translateToolResult      → T16 (plan §1658)
  *   beginAiBatch             → T17 (plan §1733)
  *   endAiBatch               → T17 (plan §1733)
- *   lockManualEdits          → T22 (plan §2180)
+ *   lockManualEdits          → T22 (plan §2180) — WIRED
  *   enforceCuratedToolList   → T13 (this file; one-liner over T8)
  *
  * Decoupling stance
@@ -90,6 +90,11 @@ import {
   type BatchController,
   type ExcalidrawApiLike,
 } from './batch'
+import {
+  createLockController,
+  type LockController,
+  type LockObserver,
+} from './lock'
 
 // ---------------------------------------------------------------------------
 // Telemetry sink (skeleton stub)
@@ -130,8 +135,12 @@ export const NoopTelemetry: TelemetrySink = {
 export type BatchToken = symbol & { readonly __brand: 'CanvasMcpBatchToken' }
 
 /**
- * Releases a manual-edit lock. Returned by `lockManualEdits`. Concrete
- * implementation lands in T22.
+ * Releases a manual-edit lock. Returned by `lockManualEdits` (T22).
+ *
+ * The shape is identical to (and structurally compatible with) the
+ * `UnlockFn` exported from `./lock.ts`. Calling the returned fn
+ * decrements the orchestrator's manual-edit refCount once; subsequent
+ * calls on the same fn are safe no-ops (idempotent unlock).
  */
 export type UnlockFn = () => void
 
@@ -347,6 +356,19 @@ export class CanvasMcpOrchestrator {
    * fail-closed no-ops + warn (see `./batch.ts`).
    */
   protected readonly batch: BatchController
+  /**
+   * Reference-counted manual-edit lock controller (T22). Each canvas page
+   * owns one. While `isLocked() === true` the canvas wiring (T20) flips
+   * Excalidraw `viewModeEnabled: true` and renders
+   * `CanvasManualEditLockBanner` so user edits are paused without
+   * disabling pan/zoom.
+   *
+   * Coupling: `endAiBatch` ALWAYS calls `this.lock.forceUnlock()` so the
+   * lock cannot survive a completed batch (plan §2186-2187 auto-unlock
+   * contract — see `decisions.md`). Future `setState('idle' | 'error')`
+   * transitions should also call `forceUnlock` when wired.
+   */
+  protected readonly lock: LockController
 
   constructor(deps: CanvasMcpOrchestratorDeps) {
     this.deps = deps
@@ -363,6 +385,7 @@ export class CanvasMcpOrchestrator {
       telemetry: this.telemetry,
       generateBatchToken: createBatchToken,
     })
+    this.lock = createLockController({ logger: deps.logger })
 
     // Self-check (plan §1465): every key in the responsibility registry MUST
     // resolve to a callable method on this instance. Iterate the runtime
@@ -539,6 +562,12 @@ export class CanvasMcpOrchestrator {
    */
   endAiBatch(token: BatchToken): void {
     this.batch.end(token)
+    // Auto-unlock per plan §2186-2187: "Unlock automatically on
+    // `endAiBatch` or orchestrator state transition to `idle` / `error`".
+    // `forceUnlock` is idempotent when the controller is already idle, so
+    // this is safe even when no manual-edit lock was acquired during the
+    // batch (e.g. a programmatic batch with no UI lock).
+    this.lock.forceUnlock()
   }
 
   /**
@@ -632,15 +661,51 @@ export class CanvasMcpOrchestrator {
   }
 
   // -------------------------------------------------------------------------
-  // 10. lockManualEdits — T22
+  // 10. lockManualEdits — T22 (wired)
   // -------------------------------------------------------------------------
   /**
-   * Acquire the manual-edit concurrency lock and return an unlock callback.
-   * Implementation lands in T22.
+   * Acquire a manual-edit lock and return an idempotent unlock callback.
+   *
+   * The lock is reference-counted (multiple concurrent acquirers stack;
+   * only the LAST unlock fully restores edit mode) and ALWAYS auto-drains
+   * when `endAiBatch` is called — the orchestrator is responsible for not
+   * leaving the canvas in a zombie-locked state across an aborted batch.
+   *
+   * Delegates to the pure helper in `./lock.ts` so the refcount + observer
+   * + epoch-stale-unlock semantics stay testable in isolation. The canvas
+   * page subscribes via `subscribeManualEditLock(...)` and toggles
+   * Excalidraw `viewModeEnabled` + the `CanvasManualEditLockBanner`
+   * accordingly (wired in T20).
    */
   lockManualEdits(): UnlockFn {
-    throw todo('lockManualEdits', 'T22', 2180)
+    return this.lock.lock()
   }
+
+  /**
+   * Read the current manual-edit lock state. Defined as an instance arrow
+   * (not a prototype method) so it does NOT pollute the prototype and
+   * break the "exactly the 11 responsibility methods" reflection test in
+   * `index.test.ts` — same pattern as `setThreadId` (T15).
+   */
+  isManualEditLocked: () => boolean = () => this.lock.isLocked()
+
+  /**
+   * Subscribe to manual-edit lock state changes. Returns an unsubscribe
+   * fn — symmetric with zustand `subscribe()` so the canvas page can wire
+   * via `useSyncExternalStore` (or a one-shot `useEffect`) without
+   * pulling React or zustand into this module.
+   *
+   * The observer fires on every refCount change (including stack pushes
+   * that don't flip `locked`); the consumer chooses whether to ignore
+   * refCount-only changes.
+   *
+   * Defined as an instance arrow for the same reason as
+   * `isManualEditLocked` above — keeps the 11-method reflection test
+   * happy.
+   */
+  subscribeManualEditLock: (observer: LockObserver) => () => void = (
+    observer,
+  ) => this.lock.onChange(observer)
 
   // -------------------------------------------------------------------------
   // 11. enforceCuratedToolList — T13 (REAL implementation)
