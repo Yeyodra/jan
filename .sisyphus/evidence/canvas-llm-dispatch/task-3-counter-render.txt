@@ -1,0 +1,18 @@
+T3 — CanvasAiIndicator progress counter render evidence
+=========================================================
+Date: 2026-06-17
+
+Test run: bun run vitest --run src/components/canvas/CanvasAiIndicator
+Result:   18 passed (18 total) in 184ms
+
+New tests added (3):
+  ✓ renders "AI is drawing…" without counter when progress is undefined
+  ✓ renders "AI is drawing… (1/5)" when progress={current:1,total:5}
+  ✓ counter span has data-testid="canvas-ai-indicator-counter"
+
+Component change:
+  - Added optional prop: progress?: { current: number; total: number }
+  - Counter rendered inline after label when progress && progress.total > 0
+  - Counter span: <span data-testid="canvas-ai-indicator-counter">({current}/{total})</span>
+
+TypeScript: npx tsc --noEmit | Select-String "CanvasAiIndicator" → (no output) = zero errors

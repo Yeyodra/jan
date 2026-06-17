@@ -57,6 +57,11 @@ export type CanvasAiIndicatorProps = {
   state: OrchestratorState
   /** Optional caller-supplied classes (positioning override, theming hooks). */
   className?: string
+  /**
+   * Optional draw progress. When provided (and total > 0), renders
+   * "AI is drawing… (current/total)" inline after the label.
+   */
+  progress?: { current: number; total: number }
 }
 
 /**
@@ -75,6 +80,7 @@ const VISIBLE_STATES: ReadonlySet<OrchestratorState> = new Set<OrchestratorState
 export function CanvasAiIndicator({
   state,
   className,
+  progress,
 }: CanvasAiIndicatorProps): JSX.Element | null {
   if (!VISIBLE_STATES.has(state)) {
     return null
@@ -105,6 +111,11 @@ export function CanvasAiIndicator({
     >
       <Loader className="size-3.5 animate-spin" aria-hidden="true" />
       <span>AI is drawing…</span>
+      {progress && progress.total > 0 && (
+        <span data-testid="canvas-ai-indicator-counter">
+          ({progress.current}/{progress.total})
+        </span>
+      )}
     </div>
   )
 }

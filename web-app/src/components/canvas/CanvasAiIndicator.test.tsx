@@ -96,6 +96,30 @@ describe('CanvasAiIndicator (state transitions)', () => {
   })
 })
 
+describe('CanvasAiIndicator (progress counter)', () => {
+  it('renders "AI is drawing…" without counter when progress is undefined', () => {
+    render(<CanvasAiIndicator state="drawing" />)
+    expect(screen.getByText(INDICATOR_TEXT)).toBeInTheDocument()
+    expect(screen.queryByTestId('canvas-ai-indicator-counter')).not.toBeInTheDocument()
+    cleanup()
+  })
+
+  it('renders "AI is drawing… (1/5)" when progress={current:1,total:5}', () => {
+    render(<CanvasAiIndicator state="drawing" progress={{ current: 1, total: 5 }} />)
+    expect(screen.getByText(INDICATOR_TEXT)).toBeInTheDocument()
+    expect(screen.getByTestId('canvas-ai-indicator-counter')).toHaveTextContent('(1/5)')
+    cleanup()
+  })
+
+  it('counter span has data-testid="canvas-ai-indicator-counter"', () => {
+    render(<CanvasAiIndicator state="drawing" progress={{ current: 3, total: 5 }} />)
+    const counter = screen.getByTestId('canvas-ai-indicator-counter')
+    expect(counter).toBeInTheDocument()
+    expect(counter.tagName).toBe('SPAN')
+    cleanup()
+  })
+})
+
 describe('CanvasAiIndicator (render performance)', () => {
   /**
    * Wall-clock render-budget gate. Plan §1972 calls for 16ms (single React

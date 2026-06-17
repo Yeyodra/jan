@@ -1,0 +1,28 @@
+T3 — CanvasAiIndicator backward compatibility evidence
+=======================================================
+Date: 2026-06-17
+
+All 15 original tests pass WITHOUT modification.
+Total tests: 18 (15 original + 3 new) — all PASS.
+
+Backward compat contract:
+  - progress prop is OPTIONAL (undefined by default)
+  - When progress is undefined → renders "AI is drawing…" only (no counter)
+  - When progress.total === 0 → renders "AI is drawing…" only (no counter)
+  - VISIBLE_STATES unchanged: ['spawning', 'awaiting-approval', 'drawing']
+  - Positioning, z-index, pointer-events-none: UNCHANGED
+  - role="status", aria-live="polite": UNCHANGED
+  - data-testid="canvas-ai-indicator": UNCHANGED
+
+Existing tests verified:
+  ✓ renders nothing when state="idle"
+  ✓ renders nothing when state="error"
+  ✓ renders spinner + "AI is drawing…" when state="spawning"
+  ✓ renders spinner + "AI is drawing…" when state="awaiting-approval"
+  ✓ renders spinner + "AI is drawing…" when state="drawing"
+  ✓ exposes role="status" and aria-live="polite" on the wrapper
+  ✓ disables pointer events on the overlay
+  ✓ auto-hides on transition drawing → idle
+  ✓ auto-hides on transition drawing → error
+  ✓ appears on transition idle → spawning
+  ✓ render performance tests (all 5 states within 50ms budget)
