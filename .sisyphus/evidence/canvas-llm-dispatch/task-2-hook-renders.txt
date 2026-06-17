@@ -1,0 +1,28 @@
+T2 Evidence: useCanvasChat hook renders — vitest output
+=========================================================
+Date: 2026-06-17
+Command: bun run test -- src/hooks/useCanvasChat.test.ts
+
+ RUN  v3.2.4 C:/Users/Nazril/Documents/Projek/jan/web-app
+
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > renders without crashing and returns expected shape  26ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > does NOT expose messages array  3ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > sendMessage calls useChat append with text part  5ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > stop calls useChat stop  3ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > status mapping > maps "ready" → "idle"  5ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > status mapping > maps "submitted" → "submitting"  2ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > status mapping > maps "streaming" → "streaming"  2ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > status mapping > maps "error" → "error"  2ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > status mapping > maps unknown status → "idle"  2ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > surfaces error from useChat  2ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > uses canvas- prefixed sessionId to avoid chat thread collision  13ms
+ ✓ src/hooks/useCanvasChat.test.ts > useCanvasChat > calls onFinish when stream ends  4ms
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  20:39:54
+   Duration  2.23s
+
+lsp_diagnostics on useCanvasChat.ts:      No diagnostics found
+lsp_diagnostics on useCanvasChat.test.ts: No diagnostics found
+tsc pre-existing errors: 7 errors, none in new files

@@ -189,3 +189,43 @@ export function filterAllowedTools(tools: MCPTool[]): MCPTool[] {
 export function requiresApproval(toolName: string): boolean {
   return EXCALIDRAW_MUTATING_TOOLS.has(toolName)
 }
+
+// ---------------------------------------------------------------------------
+// AI SDK tool definitions (for useCanvasChat)
+// ---------------------------------------------------------------------------
+
+import { jsonSchema, type Tool } from 'ai'
+
+/**
+ * Returns an AI SDK `Record<string, Tool>` for all tools in
+ * `EXCALIDRAW_ALLOWED_TOOLS`.
+ *
+ * Descriptions and input schemas are intentionally minimal stubs — the real
+ * shapes come from the live mcp_excalidraw `tools/list` response at runtime
+ * (see `filterAllowedTools`). These stubs satisfy the Vercel AI SDK's
+ * requirement that every tool in the `tools` map has at least an
+ * `inputSchema` so the LLM can reference them in its system prompt.
+ *
+ * The hook (useCanvasChat) passes this record to `useChat` so the AI SDK
+ * includes the tool names in the request context. Actual execution is
+ * delegated to the CanvasMcpOrchestrator via `onToolCall`.
+ *
+ * Design: derives exclusively from `EXCALIDRAW_ALLOWED_TOOLS` — no separate
+ * hardcoded list. If the allow-list changes, this function picks it up
+ * automatically.
+ */
+export function getExcalidrawCuratedToolDefinitions(): Record<string, Tool> {
+  const result: Record<string, Tool> = {}
+  for (const name of EXCALIDRAW_ALLOWED_TOOLS) {
+    result[name] = {
+      description: `mcp_excalidraw tool: ${name}`,
+      // Permissive object schema — the real schema is enforced by
+      // mcp_excalidraw at call time via the MCP wire protocol.
+      inputSchema: jsonSchema<Record<string, unknown>>({
+        type: 'object',
+        additionalProperties: true,
+      }),
+    }
+  }
+  return result
+}
