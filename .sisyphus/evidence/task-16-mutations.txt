@@ -1,0 +1,34 @@
+Task 16 — translateMcpToolResult evidence log
+=============================================
+Generated: 2026-06-17T00:08:43.634Z
+
+Each section is one CanvasMutation kind produced by the result-translator.
+All ids in the OUTPUT column are canvas-store ids (mcp_ ids fully translated).
+
+--- create_element → add ---
+INPUT  (mcp text, head):  Element created successfully! |  | {
+OUTPUT (mutation): [{"kind":"add","elements":[{"id":"canvas-1","type":"rectangle","x":0,"y":0,"width":100,"height":50}]}]
+
+--- update_element → update (id reuse: same mcp-r1 → same canvas id as above) ---
+INPUT  (mcp text, head):  Element updated successfully! |  | {
+OUTPUT (mutation): [{"kind":"update","ids":["canvas-1"],"patch":{"id":"canvas-1","x":99}}]
+
+--- delete_element → delete ---
+INPUT  (mcp text, head):  Element deleted successfully! |  | {
+OUTPUT (mutation): [{"kind":"delete","ids":["canvas-1"]}]
+
+--- batch_create_elements → add (3 elements) ---
+INPUT  (mcp text, head):  3 elements created successfully! |  | {
+OUTPUT (mutation): [{"kind":"add","elements":[{"id":"canvas-2","type":"rectangle"},{"id":"canvas-3","type":"ellipse"},{"id":"canvas-4","type":"arrow"}]}]
+
+--- error envelope → noop ---
+INPUT  (mcp text):  { error: "transport closed" }
+OUTPUT (mutation): [{"kind":"noop","reason":"mcp error: transport closed"}]
+
+--- unrecognized preamble → noop ---
+INPUT  (mcp text):  "Some random output"
+OUTPUT (mutation): [{"kind":"noop","reason":"unrecognized preamble"}]
+
+--- explicit toolName=create_element (bypasses prose sniffing) ---
+INPUT  (raw JSON, no preamble):  {"id":"mcp-direct","type":"text"}
+OUTPUT (mutation): [{"kind":"noop","reason":"json parse failed"}]

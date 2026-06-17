@@ -44,13 +44,14 @@ function fakeTool(name: string): MCPTool {
 // Expected method ↔ implementing-task pairs. Drives the parametric TODO
 // assertions below.
 //
-// T14/T15 partial-completion note: `resolveActiveCanvas`,
-// `syncStateFromCanvas`, and `dispatchToolCall` have REAL implementations
-// as of T14/T15 and have moved into the dedicated "real behaviour" describe
-// blocks below. The remaining T14 method (`applyTheme`) and the T16/T17/T22
-// methods still throw TODO and stay in this list. `handleProcessCrash` is
-// also T14-scoped but is intentionally left as a TODO thrower until the
-// crash-restart wiring lands (separate sub-task — see plan §1480 follow-ups).
+// T14/T15/T16 partial-completion note: `resolveActiveCanvas`,
+// `syncStateFromCanvas`, `dispatchToolCall`, `translateElementId`, and
+// `translateToolResult` have REAL implementations as of T14/T15/T16 and have
+// moved into the dedicated "real behaviour" describe blocks below. The
+// remaining T14 method (`applyTheme`) and the T17/T22 methods still throw
+// TODO and stay in this list. `handleProcessCrash` is also T14-scoped but
+// is intentionally left as a TODO thrower until the crash-restart wiring
+// lands (separate sub-task — see plan §1480 follow-ups).
 const RESPONSIBILITY_TASK_MAP: ReadonlyArray<{
   name: Exclude<
     OrchestratorResponsibilityName,
@@ -58,14 +59,14 @@ const RESPONSIBILITY_TASK_MAP: ReadonlyArray<{
     | 'resolveActiveCanvas'
     | 'syncStateFromCanvas'
     | 'dispatchToolCall'
+    | 'translateElementId'
+    | 'translateToolResult'
   >
   task: string
 }> = [
-  { name: 'translateElementId', task: 'T16' },
   { name: 'beginAiBatch', task: 'T17' },
   { name: 'endAiBatch', task: 'T17' },
   { name: 'handleProcessCrash', task: 'T14' },
-  { name: 'translateToolResult', task: 'T16' },
   { name: 'applyTheme', task: 'T14' },
   { name: 'lockManualEdits', task: 'T22' },
 ]
@@ -153,12 +154,8 @@ describe('CanvasMcpOrchestrator — TODO throwers', () => {
       // Some methods are async (return Promise), some sync. Handle both.
       const invoke = () => {
         switch (name) {
-          case 'translateElementId':
-            return method.call(o, 'mcp-id')
           case 'endAiBatch':
             return method.call(o, undefined as unknown as BatchToken)
-          case 'translateToolResult':
-            return method.call(o, { content: [] } as McpToolResult)
           case 'applyTheme':
             return method.call(o, [])
           default:
@@ -446,6 +443,93 @@ describe('CanvasMcpOrchestrator — dispatchToolCall (wired in T15)', () => {
     })
 
     expect(result).toEqual({ error: 'socket closed' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// translateElementId / translateToolResult — REAL behaviour (wired in T16)
+// ---------------------------------------------------------------------------
+//
+// Exhaustive coverage of the bi-map and the wire-shape parser lives in
+// `./id-translation.test.ts` and `./result-translator.test.ts`. The
+// integration assertions here only confirm the orchestrator class WIRES
+// THROUGH correctly: the per-instance `IdTranslator` is created at
+// construction time with the (optionally injected) `generateId`, and the
+// two responsibility methods delegate to it.
+
+describe('CanvasMcpOrchestrator — translateElementId (wired in T16)', () => {
+  it('allocates a canvas id on first contact and is idempotent on repeat', () => {
+    let n = 0
+    const o = makeOrchestrator({ generateId: () => `c-${++n}` })
+    const a1 = o.translateElementId('mcp-a')
+    const a2 = o.translateElementId('mcp-a')
+    const b = o.translateElementId('mcp-b')
+    expect(a1).toBe('c-1')
+    expect(a2).toBe('c-1')
+    expect(b).toBe('c-2')
+  })
+
+  it('reverseTranslateElementId returns the original mcp id', () => {
+    let n = 0
+    const o = makeOrchestrator({ generateId: () => `c-${++n}` })
+    const canvasId = o.translateElementId('mcp-x')
+    expect(o.reverseTranslateElementId(canvasId)).toBe('mcp-x')
+    expect(o.reverseTranslateElementId('not-mapped')).toBeUndefined()
+  })
+
+  it('registerUserElement makes a user-created id reverse-translatable as identity', () => {
+    const o = makeOrchestrator()
+    o.registerUserElement('user-z')
+    expect(o.reverseTranslateElementId('user-z')).toBe('user-z')
+  })
+
+  it('uses crypto.randomUUID-style default when generateId is omitted', () => {
+    const o = makeOrchestrator() // no generateId
+    const canvasId = o.translateElementId('mcp-x')
+    // UUID v4-shaped — 36 chars with 4 hyphens.
+    expect(canvasId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+})
+
+describe('CanvasMcpOrchestrator — translateToolResult (wired in T16)', () => {
+  it('returns [noop] for an error envelope', () => {
+    const o = makeOrchestrator()
+    const out = o.translateToolResult({ error: 'boom' })
+    expect(out).toHaveLength(1)
+    expect(out[0].kind).toBe('noop')
+  })
+
+  it('produces an `add` mutation for a create_element wire result with translated id', () => {
+    let n = 0
+    const o = makeOrchestrator({ generateId: () => `c-${++n}` })
+    const element = { id: 'mcp-1', type: 'rectangle', x: 1 }
+    const text = `Element created successfully!\n\n${JSON.stringify(element, null, 2)}\n\n✅ Synced to canvas`
+    const out = o.translateToolResult({ content: [{ type: 'text', text }] })
+    expect(out).toHaveLength(1)
+    if (out[0].kind !== 'add') throw new Error('expected add')
+    expect(out[0].elements[0].id).toBe('c-1')
+  })
+
+  it('translateToolResultByName bypasses prose sniffing', () => {
+    let n = 0
+    const o = makeOrchestrator({ generateId: () => `c-${++n}` })
+    const element = { id: 'mcp-y', type: 'rectangle' }
+    const out = o.translateToolResultByName('create_element', {
+      content: [{ type: 'text', text: JSON.stringify(element) }],
+    })
+    if (out[0].kind !== 'add') throw new Error('expected add')
+    expect(out[0].elements[0].id).toBe('c-1')
+  })
+
+  it('shares the same IdTranslator across translateElementId and translateToolResult', () => {
+    let n = 0
+    const o = makeOrchestrator({ generateId: () => `c-${++n}` })
+    const canvasId = o.translateElementId('mcp-shared') // → c-1
+    const text = `Element updated successfully!\n\n${JSON.stringify({ id: 'mcp-shared', x: 99 }, null, 2)}\n\n✅`
+    const out = o.translateToolResult({ content: [{ type: 'text', text }] })
+    if (out[0].kind !== 'update') throw new Error('expected update')
+    // Must reuse the existing mapping rather than allocating a new id.
+    expect(out[0].ids).toEqual([canvasId])
   })
 })
 

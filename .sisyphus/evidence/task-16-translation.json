@@ -1,0 +1,39 @@
+{
+  "scenario": "plan §1712 — Round-trip translation is consistent",
+  "steps": [
+    {
+      "step": 1,
+      "action": "translateMcpToCanvas('mcp_abc')",
+      "result": "canvas-1"
+    },
+    {
+      "step": 2,
+      "action": "translateMcpToCanvas('mcp_abc')",
+      "result": "canvas-1",
+      "idempotent": true
+    },
+    {
+      "step": 3,
+      "action": "translateMcpToCanvas('mcp_xyz')",
+      "result": "canvas-2",
+      "distinct": true
+    },
+    {
+      "step": 4,
+      "action": "translateCanvasToMcp('canvas-1')",
+      "result": "mcp_abc",
+      "correct": true
+    }
+  ],
+  "namespacingTest": {
+    "registered": "x (user)",
+    "translateMcpToCanvas_x": "c-1",
+    "collision_avoided": true,
+    "reverse_x": "x",
+    "reverse_fromMcp": "x"
+  },
+  "summary": {
+    "consistent": true,
+    "size_after_test": 2
+  }
+}

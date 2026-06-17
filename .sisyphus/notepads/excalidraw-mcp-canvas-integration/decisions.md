@@ -132,3 +132,49 @@ wire-handling here. Two distinct types is the right separation.
 `ERR_GENERIC_TOOL_ERROR` are all module-level exports. Tests assert
 against the constants (when convenient) but also against the literal
 strings — both surfaces remain stable contracts.
+
+## [2026-06-17] T16 — CanvasMutation discriminated union shape
+
+**Decision:** `CanvasMutation` lives in `types.ts` (not `index.ts`) as a 5-variant discriminated union:
+
+`ts
+export type CanvasMutation =
+  | { kind: 'add'; elements: ExcalidrawElementLike[] }
+  | { kind: 'update'; ids: string[]; patch: Partial<ExcalidrawElementLike> }
+  | { kind: 'delete'; ids: string[] }
+  | { kind: 'reorder'; ids: string[] }
+  | { kind: 'noop'; reason?: string }
+`
+
+**Rationale:**
+1. `types.ts` is the contract module — every consumer (T18 chat-dispatcher, T22 mutation applier) imports from one file.
+2. `index.ts` re-exports `CanvasMutation` for back-compat with existing callers that imported from the package root.
+3. Five variants cover every curated mcp_excalidraw mutation (T8 allow-list — 19 mutating + 5 read-only) without leaking tool-name as a discriminant. Layout transforms (`align_elements`, `distribute_elements`, `group_elements`) all reduce to `update` (their wire result is a list of moved elements). `reorder` is reserved for future order-preserving mutations.
+4. `noop` carries an optional `reason` so telemetry can record WHY a translation degraded (error envelope, malformed payload, unrecognized tool) without inventing a parallel error channel.
+
+## [2026-06-17] T16 — Translation glue placement (per-module pure helpers, not class methods)
+
+**Decision:** `id-translation.ts` and `result-translator.ts` ship as separate pure factories. The orchestrator class wires them through `translateElementId` / `translateToolResult` but contains zero translation logic.
+
+**Rationale:**
+1. Mirrors the structural-DI template established by T14 (`active-canvas.ts`) and T15 (`dispatch.ts`). New orchestrator wiring tasks should follow the same shape.
+2. The `"does not import React, zustand, or Excalidraw at module load"` test only inspects `index.ts`; helper modules are free to evolve without breaking the tripwire.
+3. Per-module unit tests (`id-translation.test.ts`, `result-translator.test.ts`) cover the contract exhaustively (20 + 14 cases). The class-level integration tests in `index.test.ts` (8 new cases) only verify wiring, not algorithmic correctness — same separation as T14/T15.
+
+## [2026-06-17] T16 — Replicate generateId vs accept as deps
+
+**Decision:** `CanvasMcpOrchestratorDeps.generateId` is OPTIONAL. When omitted, `index.ts` uses `defaultGenerateId()` — a hand-replicated copy of `canvas-store.ts:112-134` (`crypto.randomUUID` with v4 fallback). The translator factory itself ALWAYS takes `generateId` (no default at that layer — keeps it pure).
+
+**Rationale:**
+1. Importing `useCanvasStore` would break the orchestrator's module-load purity. Replicating the 20-line UUID generator costs less than rebuilding the test infra to skip the purity check for this one method.
+2. `deps.generateId` is the test seam: tests inject deterministic counters (`c-1`, `c-2`...) for assertion stability. Production callers omit and inherit the UUID-shape default.
+3. Comment in `defaultGenerateId` calls out the maintenance hazard explicitly: if `canvas-store.ts:112` changes id format, this default must be updated by hand. There is no compile-time link.
+
+## [2026-06-17] T16 — Two new instance-arrow methods (NOT prototype methods)
+
+**Decision:** `reverseTranslateElementId`, `registerUserElement`, and `translateToolResultByName` are defined as instance arrow assignments in the class body — NOT as prototype methods.
+
+**Rationale:**
+The reflection test in `index.test.ts` ("prototype owns exactly the 11 responsibility methods") would fail if these new methods landed on the prototype. The plan's 11-responsibility contract is canonical; new helpers must not pollute it. The same precedent exists for `setThreadId` (T15).
+
+This pattern lets the orchestrator grow auxiliary instance methods without touching the responsibility registry.

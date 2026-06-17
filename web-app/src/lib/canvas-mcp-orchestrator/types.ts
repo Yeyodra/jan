@@ -105,6 +105,58 @@ export type McpToolResult =
 export type ElementIdMapping = Map<string, string>
 
 // ---------------------------------------------------------------------------
+// Excalidraw element placeholder (T16)
+// ---------------------------------------------------------------------------
+
+/**
+ * Excalidraw element placeholder. The concrete Excalidraw runtime types live
+ * in `@excalidraw/excalidraw/element/types` (re-exported by
+ * `@/types/canvas`). We deliberately do NOT import them here — the
+ * orchestrator dir is forbidden to pull `@excalidraw/excalidraw` into its
+ * module graph (see the "does not import React, zustand, or Excalidraw at
+ * module load" test in `index.test.ts`).
+ *
+ * Adapters at the boundary (T18+ chat-dispatcher wiring) may cast/widen this
+ * to the real Excalidraw type once they cross the orchestrator boundary.
+ */
+export type ExcalidrawElementLike = Record<string, unknown> & { id: string }
+
+// ---------------------------------------------------------------------------
+// Canvas mutations (T16)
+// ---------------------------------------------------------------------------
+
+/**
+ * Discriminated union produced by `translateToolResult` (T16).
+ *
+ * Each variant represents one apply-side intent the orchestrator wants the
+ * canvas-store to execute. The shape is deliberately narrow — it mirrors the
+ * subset of canvas-store actions that the mcp_excalidraw curated allow-list
+ * can reach. Anything outside this set degrades to `noop`.
+ *
+ * Discriminant key: `kind`. Always include `kind` first when constructing.
+ *
+ * - `add`     — append new elements to the active canvas.
+ * - `update`  — patch existing elements by id.
+ * - `delete`  — remove elements by id.
+ * - `reorder` — set the canvas's element order to the supplied id sequence
+ *               (used by group/layer operations).
+ * - `noop`    — recognized tool whose result has no canvas-store effect, OR
+ *               an unrecognized tool we deliberately ignore. Carries an
+ *               optional `reason` so telemetry can record WHY.
+ *
+ * Ids in every variant are CANVAS-STORE ids (already translated through the
+ * `IdTranslator`). The translator strips the internal `mcp_` prefix and
+ * allocates / returns canvas ids; the orchestrator must never leak mcp ids
+ * into a `CanvasMutation`.
+ */
+export type CanvasMutation =
+  | { kind: 'add'; elements: ExcalidrawElementLike[] }
+  | { kind: 'update'; ids: string[]; patch: Partial<ExcalidrawElementLike> }
+  | { kind: 'delete'; ids: string[] }
+  | { kind: 'reorder'; ids: string[] }
+  | { kind: 'noop'; reason?: string }
+
+// ---------------------------------------------------------------------------
 // Responsibility registry (runtime + type)
 // ---------------------------------------------------------------------------
 

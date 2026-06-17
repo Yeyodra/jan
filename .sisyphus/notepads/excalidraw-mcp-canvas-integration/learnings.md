@@ -490,3 +490,38 @@ T15 confirms the T1.5 / T14 structural-DI template scales:
 - `ApprovalGateFn` is a function type, not an object — simpler than wrapping the zustand store
 - `DispatchMcpClientLike` defined locally instead of importing from active-canvas.ts because the wire-error handling differs (T14 trusts the helper; T15 must handle three error shapes)
 - All deps are per-call (no per-session state) — this distinguishes T15 from T14's idempotency token model
+
+## [2026-06-17] T16 — Element ID translation (mcp ↔ canvas-store)
+
+### mcp_excalidraw wire-shape findings (vendored at src-tauri/resources/mcp_excalidraw/src/index.ts)
+
+The MCP CallToolRequestSchema handler returns  content: [{ type: 'text', text: string }] where `text` always follows the prose-decorated pattern:
+`<prose preamble>\n\n<JSON.stringify(payload, null, 2)>\n\n<status emoji line>`
+
+Per-tool preambles (pinned in `result-translator.ts:PREAMBLE_TO_TOOL`):
+- `create_element`         → `"Element created successfully!"` (full element JSON, includes server-allocated `id`)
+- `update_element`         → `"Element updated successfully!"` (full element JSON post-update)
+- `delete_element`         → `"Element deleted successfully!"` (`{ id, deleted: true, syncedToCanvas: true }`)
+- `batch_create_elements`  → `"<n> elements created successfully!"` (`{ success, elements, count, syncedToCanvas }`)
+
+There is NO `op` field — the prose is the only on-the-wire disambiguator. Production callers should pass `toolName` to skip prose-sniffing.
+
+### generateId in canvas-store (replicated, NOT imported)
+
+web-app/src/stores/canvas-store.ts:112 uses `crypto.randomUUID()` with a manual RFC4122 v4 fallback. The orchestrator dir CANNOT import zustand (module-load purity test), so we replicated the function as `defaultGenerateId()` in `index.ts`. **Maintenance hazard**: if the canvas-store id format ever changes, this default must be updated by hand. A comment points to the source line.
+
+### ExcalidrawElement type availability
+
+`@/types/canvas` exports `CanvasElement = ExcalidrawElement` from `@excalidraw/excalidraw/element/types`, BUT importing that type at the orchestrator layer pulls Excalidraw's runtime into the module graph (the import is type-only but bundlers/TS-server may resolve it transitively). Safer: define a structural placeholder in `types.ts`:
+
+`	s
+export type ExcalidrawElementLike = Record<string, unknown> & { id: string }
+`
+
+This is the minimum surface the orchestrator needs (id is mandatory; everything else opaque). Adapters at the boundary (T18+ chat-dispatcher, future canvas-store mutation applier) cast/widen.
+
+### IdTranslator design — bidirectional with one namespacing constant
+
+The bi-map design uses `mcp_` as an internal forward-key prefix. Callers see clean (un-prefixed) ids in both directions. The collision-avoidance test in plan §1666 was satisfied by storing user-registered ids WITHOUT the prefix and MCP-allocated ids WITH the prefix — same canvas-store-id namespace, different forward-key namespace.
+
+**Key design tension uncovered:** `registerUserElement(z)` makes Z reverse-translatable as identity but does NOT short-circuit `translateMcpToCanvas('z')` — that still allocates a fresh canvas id. The "LLM can reference user-created elements" goal is solved by `syncStateFromCanvas` separately registering pre-existing canvas elements as ALSO MCP-issued (because the sync pushes them to mcp_excalidraw which then knows about them under the same id). T16 doesn't need to special-case it.

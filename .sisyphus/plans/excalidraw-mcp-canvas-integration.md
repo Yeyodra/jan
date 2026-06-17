@@ -1655,7 +1655,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `web-app/src/lib/canvas-mcp-orchestrator/dispatch.ts`, `dispatch.test.ts`
   - Pre-commit: `cd web-app && bun typecheck && bun test src/lib/canvas-mcp-orchestrator/`
 
-- [ ] 16. Element ID translation (mcp ↔ canvas-store)
+- [x] 16. Element ID translation (mcp ↔ canvas-store)
 
   **What to do**:
   - Implement `translateElementId(mcpId)`:
@@ -1700,11 +1700,11 @@ Max Concurrent: 5 (Wave 4)
   **Acceptance Criteria**:
 
   **TDD**:
-  - [ ] Test: translateElementId allocates new canvas id for first call with mcpId
-  - [ ] Test: second call with same mcpId returns same canvas id
-  - [ ] Test: registerUserElement(canvasId) makes reverse-lookup possible
-  - [ ] Test: mcp id namespacing prevents collision with canvas id format
-  - [ ] `cd web-app && bun test src/lib/canvas-mcp-orchestrator/id-translation.test.ts` → PASS
+  - [x] Test: translateElementId allocates new canvas id for first call with mcpId
+  - [x] Test: second call with same mcpId returns same canvas id
+  - [x] Test: registerUserElement(canvasId) makes reverse-lookup possible
+  - [x] Test: mcp id namespacing prevents collision with canvas id format
+  - [x] `cd web-app && bun test src/lib/canvas-mcp-orchestrator/id-translation.test.ts` → PASS
 
   **QA Scenarios (MANDATORY)**:
 
@@ -1723,7 +1723,8 @@ Max Concurrent: 5 (Wave 4)
   ```
 
   **Evidence to Capture**:
-  - [ ] `.sisyphus/evidence/task-16-translation.txt`
+  - [x] `.sisyphus/evidence/task-16-translation.json` (round-trip + namespacing snapshot)
+  - [x] `.sisyphus/evidence/task-16-mutations.txt` (CanvasMutation kinds log)
 
   **Commit**: YES
   - Message: `feat(orchestrator): element id translation layer`

@@ -65,6 +65,8 @@ import {
   type McpToolCall,
   type McpToolResult,
   type ElementIdMapping,
+  type CanvasMutation,
+  type ExcalidrawElementLike,
 } from './types'
 import { filterAllowedTools } from './curated-tools'
 import {
@@ -81,6 +83,8 @@ import {
   type ApprovalGateFn,
   type DispatchMcpClientLike,
 } from './dispatch'
+import { createIdTranslator, type IdTranslator } from './id-translation'
+import { translateMcpToolResult } from './result-translator'
 
 // ---------------------------------------------------------------------------
 // Telemetry sink (skeleton stub)
@@ -127,18 +131,20 @@ export type BatchToken = symbol & { readonly __brand: 'CanvasMcpBatchToken' }
 export type UnlockFn = () => void
 
 /**
- * Mutation operation produced by `translateToolResult`. The skeleton declares
- * this as `unknown` because T16 owns the discriminated-union design — adding
- * a placeholder shape here would lock in decisions that belong to T16.
+ * Re-export of the discriminated-union mutation type from `./types.ts`.
+ * Concrete shape lives there as of T16. Kept here so existing
+ * `import { CanvasMutation } from '.../canvas-mcp-orchestrator'` callers
+ * continue to compile without churn.
  */
-export type CanvasMutation = unknown
+export type { CanvasMutation } from './types'
 
 /**
- * Excalidraw-element placeholder. The Excalidraw runtime types live in the
- * vendored bundle; pulling them into the skeleton would couple T13 to T14's
- * theme-provider work. Refined in T14.
+ * Excalidraw-element placeholder, now backed by the structural type from
+ * `./types.ts`. We can't import the real Excalidraw type at this layer (the
+ * "does not import React, zustand, or Excalidraw at module load" test
+ * forbids it). Adapters at the boundary may cast/widen.
  */
-export type ExcalidrawElement = unknown
+export type ExcalidrawElement = ExcalidrawElementLike
 
 // ---------------------------------------------------------------------------
 // Dependency contract
@@ -195,6 +201,50 @@ export type CanvasMcpOrchestratorDeps = {
    * Wired in T15.
    */
   threadId?: string
+  /**
+   * Canvas-store-compatible id factory used by the T16 element-id
+   * translator. When omitted, a `crypto.randomUUID`-backed default is
+   * used that mirrors `web-app/src/stores/canvas-store.ts:112`. Tests
+   * may inject a deterministic counter.
+   *
+   * Wired in T16.
+   */
+  generateId?: () => string
+}
+
+// ---------------------------------------------------------------------------
+// Default canvas-id generator (T16)
+// ---------------------------------------------------------------------------
+
+/**
+ * Default id factory mirroring `canvas-store.ts:112` `generateId`. We
+ * REPLICATE the logic instead of importing because the orchestrator dir is
+ * forbidden to pull the zustand store into its module graph (asserted by the
+ * "does not import React, zustand, or Excalidraw at module load" test).
+ *
+ * Keep this in sync with `web-app/src/stores/canvas-store.ts:112-134` if the
+ * canvas-store id format ever changes — there is no compile-time link.
+ */
+function defaultGenerateId(): string {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    return crypto.randomUUID()
+  }
+  // RFC4122 v4 fallback (extremely unlikely path).
+  const bytes = new Uint8Array(16)
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes)
+  } else {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256)
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0'))
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex
+    .slice(6, 8)
+    .join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`
 }
 
 // ---------------------------------------------------------------------------
@@ -246,11 +296,21 @@ export class CanvasMcpOrchestrator {
    * and still route approvals to the correct conversation.
    */
   private threadId: string | undefined
+  /**
+   * Per-session bidirectional mcp ↔ canvas-store id translator (T16).
+   * One instance per orchestrator. Reset via `idTranslator.clear()` on
+   * session boundaries (currently called from `syncStateFromCanvas`'s
+   * idempotency miss-path; T22 may add an explicit `resetSession()`).
+   */
+  protected readonly idTranslator: IdTranslator
 
   constructor(deps: CanvasMcpOrchestratorDeps) {
     this.deps = deps
     this.telemetry = deps.telemetry ?? NoopTelemetry
     this.threadId = deps.threadId
+    this.idTranslator = createIdTranslator({
+      generateId: deps.generateId ?? defaultGenerateId,
+    })
 
     // Self-check (plan §1465): every key in the responsibility registry MUST
     // resolve to a callable method on this instance. Iterate the runtime
@@ -330,16 +390,46 @@ export class CanvasMcpOrchestrator {
   }
 
   // -------------------------------------------------------------------------
-  // 3. translateElementId — T16
+  // 3. translateElementId — T16 (wired)
   // -------------------------------------------------------------------------
   /**
    * Translate an mcp_excalidraw element id into the canvas-store element id.
-   * Backed by the `ElementIdMapping` cache. Implementation lands in T16.
+   * Allocates on first contact, returns the cached canvas id on repeat calls
+   * (idempotent). Internally namespaces mcp ids with `mcp_` so a coincidental
+   * collision with a canvas-store-issued id cannot silently merge two
+   * logical elements.
+   *
+   * Delegates to `IdTranslator` (`./id-translation.ts`) so the bi-map logic
+   * stays testable in isolation.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  translateElementId(_mcpId: string): string {
-    throw todo('translateElementId', 'T16', 1658)
+  translateElementId(mcpId: string): string {
+    return this.idTranslator.translateMcpToCanvas(mcpId)
   }
+
+  /**
+   * Reverse-translate a canvas-store element id back to its mcp id (or the
+   * canvas id itself for user-registered identity entries). Returns
+   * `undefined` for unregistered canvas ids — callers must register
+   * user-created elements via `registerUserElement(...)` before reverse
+   * lookups can succeed.
+   *
+   * Defined as an instance arrow (not a prototype method) so it does NOT
+   * pollute the prototype and break the "exactly the 11 responsibility
+   * methods" reflection test in `index.test.ts`.
+   */
+  reverseTranslateElementId: (canvasId: string) => string | undefined = (canvasId) =>
+    this.idTranslator.translateCanvasToMcp(canvasId)
+
+  /**
+   * Register a user-created canvas element so its id is reverse-translatable
+   * for downstream MCP requests that reference it. Identity mapping (Z → Z).
+   * Idempotent.
+   *
+   * Defined as an instance arrow (not a prototype method) for the same
+   * reason as `reverseTranslateElementId` above.
+   */
+  registerUserElement: (canvasId: string) => void = (canvasId) =>
+    this.idTranslator.registerUserElement(canvasId)
 
   // -------------------------------------------------------------------------
   // 4. syncStateFromCanvas — T14
@@ -402,16 +492,46 @@ export class CanvasMcpOrchestrator {
   }
 
   // -------------------------------------------------------------------------
-  // 8. translateToolResult — T16
+  // 8. translateToolResult — T16 (wired)
   // -------------------------------------------------------------------------
   /**
    * Translate a successful MCP tool result into a sequence of canvas-store
-   * mutations. Implementation lands in T16.
+   * mutations. Mcp element ids are translated through the per-session
+   * `IdTranslator` so the returned mutations only carry canvas-store ids.
+   *
+   * Delegates to the pure helper in `./result-translator.ts`. Never throws
+   * — failures (unrecognized tool, malformed payload, error envelope)
+   * surface as `[{ kind: 'noop', reason: '...' }]`.
+   *
+   * For the second-level `translateToolResultByName(toolName, result)`
+   * helper (preferred call site that knows the tool name), see the
+   * instance-arrow method below.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  translateToolResult(_result: McpToolResult): CanvasMutation[] {
-    throw todo('translateToolResult', 'T16', 1658)
+  translateToolResult(result: McpToolResult): CanvasMutation[] {
+    return translateMcpToolResult(result, this.idTranslator, {
+      telemetry: { increment: this.telemetry.increment.bind(this.telemetry) },
+    })
   }
+
+  /**
+   * Variant of `translateToolResult` that takes the dispatching tool name.
+   * Skips the prose-sniffing fallback in `result-translator.ts` and
+   * dispatches by the explicit name. Use this from the call site that
+   * knows the dispatched tool name (the orchestrator's own `dispatchToolCall`
+   * caller).
+   *
+   * Defined as an instance arrow (not a prototype method) for the same
+   * reason as `setThreadId` above — keeps the "11 responsibilities" shape
+   * test passing.
+   */
+  translateToolResultByName: (
+    toolName: string,
+    result: McpToolResult,
+  ) => CanvasMutation[] = (toolName, result) =>
+    translateMcpToolResult(result, this.idTranslator, {
+      toolName,
+      telemetry: { increment: this.telemetry.increment.bind(this.telemetry) },
+    })
 
   // -------------------------------------------------------------------------
   // 9. applyTheme — T14
