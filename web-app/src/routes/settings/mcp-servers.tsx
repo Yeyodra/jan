@@ -664,7 +664,7 @@ function MCPServersDesktop() {
                                       .join(', ')}
                                   </div>
                                 )}
-                              {config.official && (
+                              {config.official && key === 'Jan Browser MCP' && (
                                 <div className="mt-2 text-xs text-muted-foreground pt-2">
                                   <p className="mb-1">
                                     Requires Jan Browser Extension to be installed

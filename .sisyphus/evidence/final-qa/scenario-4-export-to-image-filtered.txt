@@ -1,0 +1,41 @@
+F3 Scenario 4 — `export_to_image` invocation attempt → tool not callable
+================================================================================
+
+RUNTIME MODE: Vitest-fallback
+WHY: See scenario-1.
+
+CONTRACT EVIDENCE — passing vitest cases:
+
+  src/lib/canvas-mcp-orchestrator/curated-tools.test.ts (46 cases — full coverage of allow-list + approval map)
+    ✓ curated-tools — filterAllowedTools() > drops unknown tools (closed allow-list, fail-closed)
+    ✓ curated-tools — requiresApproval() > returns false for an unknown tool name (fail-closed lives in the filter, not the gate)
+    ✓ curated-tools — requiresApproval() > returns false for blocked tool names (they should have been filtered out before reaching the gate)
+    (... 43 more cases across the curated-tools surface)
+
+  src/lib/canvas-mcp-orchestrator/dispatch.test.ts (allow-list-gate suite)
+    ✓ dispatchExcalidrawTool — allow-list gate > rejects a blocked tool (export_to_image) without invoking approval or mcp
+    ✓ dispatchExcalidrawTool — allow-list gate > rejects an unknown tool the same way (closed allow-list)
+
+  src/lib/canvas-mcp-orchestrator/index.test.ts (orchestrator-level)
+    ✓ CanvasMcpOrchestrator — enforceCuratedToolList > filters out blocked tools (export_to_image) and keeps allowed ones
+    ✓ CanvasMcpOrchestrator — enforceCuratedToolList > drops unknown tools (closed allow-list)
+
+CONTRACT MAPPING:
+  Two layers of defence, both verified:
+
+  1. PRESENTATION layer — `enforceCuratedToolList` runs when the orchestrator
+     advertises tools to the LLM. `export_to_image` is filtered out of the
+     advertised set, so the LLM never sees it as available.
+
+  2. EXECUTION layer — even if a malicious or stale LLM somehow names
+     `export_to_image` in a tool call, the dispatch path's allow-list gate
+     short-circuits with an error envelope BEFORE invoking the approval modal
+     or the underlying mcp transport. (This is the "fail-closed" requirement.)
+
+VERDICT: PASS
+
+LIMITATION: A live runtime check (e.g., manipulating the tool list in dev
+console to bypass the advertise-time filter) is not executed here, but the
+execution-layer gate test proves that even if the filter is bypassed, the
+dispatch refuses the tool. There is no path in the code that reaches mcp for
+a blocked tool.

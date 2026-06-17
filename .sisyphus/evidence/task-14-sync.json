@@ -1,0 +1,56 @@
+{
+  "task": "T14 — Active-canvas resolution + state-sync layer",
+  "scenario": "Sync populates mcp state from existing canvas",
+  "harness": "vitest (bun test) — see web-app/src/lib/canvas-mcp-orchestrator/active-canvas.test.ts",
+  "preconditions": [
+    "T13 orchestrator skeleton in place",
+    "active-canvas.ts pure helpers implemented",
+    "CanvasMcpOrchestrator wired to delegate resolveActiveCanvas + syncStateFromCanvas to active-canvas.ts"
+  ],
+  "test_cases": {
+    "active-canvas.test.ts": {
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "expect_calls": 33,
+      "duration_ms": 70
+    }
+  },
+  "import_scene_observation": {
+    "test": "syncStateFromCanvas > calls import_scene exactly once with the serialized scene",
+    "canvas_setup": {
+      "id": "cv-1",
+      "elements": [
+        { "id": "el-0", "type": "rectangle" },
+        { "id": "el-1", "type": "rectangle" }
+      ]
+    },
+    "captured_call": {
+      "name": "import_scene",
+      "arguments": {
+        "mode": "replace",
+        "data_payload_summary": {
+          "type": "excalidraw",
+          "version": 2,
+          "source": "jan-canvas-mcp-orchestrator",
+          "element_count": 2,
+          "first_element_id": "el-0"
+        }
+      },
+      "call_count": 1
+    },
+    "outcome": { "status": "imported", "elementCount": 2 }
+  },
+  "idempotency_observation": {
+    "test": "syncStateFromCanvas > is idempotent within the same session token",
+    "first_call_outcome": { "status": "imported" },
+    "second_call_outcome": { "status": "skipped", "reason": "already-synced" },
+    "callTool_invocations": 1
+  },
+  "integration_with_orchestrator": {
+    "test": "CanvasMcpOrchestrator — syncStateFromCanvas (wired in T14) > forwards the active canvas through to import_scene once",
+    "result": "PASS — orchestrator class threads injected router + per-instance sessionToken to active-canvas helper; double-call to o.syncStateFromCanvas() yields one callTool invocation"
+  },
+  "verdict": "PASS",
+  "captured_at": "2026-06-17"
+}

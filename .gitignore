@@ -63,7 +63,12 @@ src-tauri/plugins/tauri-plugin-foundation-models/swift-server/Package.resolved
 ## cargo
 target
 Cargo.lock
-src-tauri/resources/
+# src-tauri/resources: keep build artifacts ignored, but allow vendored sidecars (e.g., mcp_excalidraw, T5)
+# `src-tauri/resources/bin` and `src-tauri/resources/pre-install` are already listed earlier (lines 16, 26).
+# Add per-subpath ignores for any other build outputs as they are introduced.
+src-tauri/resources/lib
+# Vendored mcp_excalidraw snapshot (Task 5) — runtime node_modules is built at Tauri build time (T11)
+src-tauri/resources/mcp_excalidraw/node_modules/
 
 ## test
 test-data

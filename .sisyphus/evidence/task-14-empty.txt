@@ -1,0 +1,51 @@
+T14 — Empty canvas sync no-op evidence
+======================================
+
+Scenario: Empty canvas sync is no-op
+Harness:  vitest (bun test)
+Test:     web-app/src/lib/canvas-mcp-orchestrator/active-canvas.test.ts
+          > syncStateFromCanvas > is a no-op when the canvas has zero elements
+
+Setup
+-----
+- Canvas record:   { id: 'cv-empty', elements: [] }
+- mcpClient.callTool: vi.fn() (spy, never resolved)
+- sessionToken: 'sess-empty'
+- logger:       { debug: vi.fn(), warn: vi.fn() }
+
+Observation
+-----------
+syncStateFromCanvas({ canvasId: 'cv-empty', store, mcpClient, sessionToken, logger })
+
+  → returned: { status: 'skipped', reason: 'empty-canvas' }
+  → callTool: NOT CALLED (callTool.mock.calls.length === 0)
+  → logger.debug: called once with message containing 'empty canvas'
+                  + meta { canvasId: 'cv-empty' }
+  → logger.warn:  NOT CALLED (no error path entered)
+
+Decision rationale (for the audit trail)
+----------------------------------------
+mcp_excalidraw's import_scene handler at
+  src-tauri/resources/mcp_excalidraw/dist/index.js:1400-1402
+throws "No elements found in the import data" whenever the import data
+yields zero elements. We could swallow that error (the `failed` outcome
+branch already handles it gracefully) but the noise pollutes telemetry on
+every empty-session start. We therefore short-circuit BEFORE the wire call
+when elements is empty: no callTool invocation, no error log — only a
+debug-level "empty canvas" trace so test harnesses can still confirm "sync
+was attempted".
+
+Verdict
+-------
+PASS — empty canvas does not call import_scene; outcome is skipped/empty-canvas;
+       no error path triggered.
+
+Test result snapshot
+--------------------
+src\lib\canvas-mcp-orchestrator\active-canvas.test.ts:
+  (pass) syncStateFromCanvas > is a no-op when the canvas has zero elements
+
+  15 pass / 0 fail / 33 expect() calls (full suite)
+  Ran 15 tests across 1 file. [70.00ms]
+
+Captured: 2026-06-17

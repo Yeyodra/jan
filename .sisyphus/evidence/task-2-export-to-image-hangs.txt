@@ -1,0 +1,70 @@
+# Negative-Test Evidence — Hard-Exclude Tool Justification (T2)
+
+## Methodology
+
+Both hard-exclude tools (`export_to_image`, `get_canvas_screenshot`) invoked via MCP
+Inspector CLI against `bun dist/index.js` with `ENABLE_CANVAS_SYNC=false` and the
+companion canvas Express server (`npm run canvas`, port 3333) **not started**. Each
+call wrapped in a 15-second PowerShell job timeout.
+
+Command shape:
+```
+npx --yes @modelcontextprotocol/inspector --cli \
+  -e ENABLE_CANVAS_SYNC=false -- \
+  bun dist/index.js --method tools/call --tool-name <TOOL> [--tool-arg ...]
+```
+
+## Test 1: export_to_image (format=png)
+
+STATUS=COMPLETED_BEFORE_TIMEOUT (within 15s budget)
+ELAPSED_MS=6181
+---OUTPUT---
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Error: Unable to connect. Is the computer able to access the url?"
+    }
+  ],
+  "isError": true
+}
+
+## Test 2: get_canvas_screenshot
+
+STATUS=COMPLETED_BEFORE_TIMEOUT (within 15s budget)
+ELAPSED_MS=5204
+---OUTPUT---
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Error: Unable to connect. Is the computer able to access the url?"
+    }
+  ],
+  "isError": true
+}
+
+## Interpretation
+
+**Hang prediction (plan §QA): NOT REPRODUCED in this configuration.**
+
+Both tools returned promptly with `isError: true` and a connection-refused message
+rather than hanging. This is the expected behavior when the canvas Express server
+(`npm run canvas`, default port 3333) is offline AND `ENABLE_CANVAS_SYNC=false`
+short-circuits the sync wait path before any long HTTP retry.
+
+However, the **hard-exclude rationale still holds** for Wave 2 Task 8:
+
+1. Both tools are functionally **non-operational** without the canvas Express server
+   (which the plan explicitly forbids running — `Must NOT do` section of T2).
+2. Surfacing them to Jan's LLM tool registry would advertise capabilities that
+   always fail at call time, polluting tool-selection heuristics and producing
+   confusing UX (model retries, error spam).
+3. Under different env configurations (e.g., `ENABLE_CANVAS_SYNC=true` without
+   the Express server reachable) these calls **could** block on HTTP retries —
+   the underlying handler issues outbound fetch() to the canvas URL. Hard-excluding
+   them at registry-projection time (T8) eliminates that risk entirely.
+
+**Conclusion**: Quick-error rather than hang in *this* environment, but exclusion
+is still warranted because the tools are useless in Jan's deployment (no Express
+server) and risky in adjacent configurations.

@@ -1,0 +1,4 @@
+# Vendored snapshot — preserve upstream bytes verbatim so checksums stay stable
+# across platforms (esp. Windows with core.autocrlf=true). T11's SHA-256 verification
+# of dist/index.js depends on this.
+* -text

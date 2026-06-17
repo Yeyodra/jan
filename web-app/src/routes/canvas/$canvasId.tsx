@@ -39,6 +39,7 @@ import { useCanvasStore } from '@/stores/canvas-store'
 import { useCanvasAutoSave } from '@/hooks/useCanvasAutoSave'
 import { useExcalidrawTheme } from '@/hooks/useExcalidrawTheme'
 import { useKeyboardShortcut } from '@/hooks/useHotkeys'
+import { useMCPServers } from '@/hooks/useMCPServers'
 import {
   CanvasEditor,
   type CanvasEditorInitialScene,
@@ -48,6 +49,11 @@ import {
   type CanvasToolbarAction,
 } from '@/components/canvas/CanvasToolbar'
 import { CanvasRouteErrorComponent } from '@/components/canvas/CanvasErrorBoundary'
+import { CanvasPromptBar } from '@/components/canvas/CanvasPromptBar'
+import { CanvasAiIndicator } from '@/components/canvas/CanvasAiIndicator'
+import { CanvasManualEditLockBanner } from '@/components/canvas/CanvasManualEditLockBanner'
+import { CanvasMcpOrchestrator } from '@/lib/canvas-mcp-orchestrator'
+import type { OrchestratorState } from '@/lib/canvas-mcp-orchestrator/types'
 import {
   downloadBlob,
   exportCanvasToJson,
@@ -179,6 +185,97 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
   // While an export or copy is in flight we disable toolbar actions so the
   // user can't double-fire a long-running render.
   const [busy, setBusy] = useState(false)
+
+  // ---- AI prompt-bar wiring (T20) ----------------------------------------
+  // The Settings > MCP > excalidraw toggle gates whether the prompt bar +
+  // indicator + lock banner mount at all. We read it via a fine-grained
+  // selector so unrelated MCP toggles don't cause re-renders.
+  const isExcalidrawActive = useMCPServers((s) =>
+    Boolean(s.mcpServers['excalidraw']?.active),
+  )
+
+  // Per-route orchestrator instance. Memoised on `canvasId` so swapping to a
+  // different canvas yields a fresh orchestrator (mirrors how `<CanvasDetail
+  // key={canvas.id} />` remounts the editor with a fresh `initialScene`).
+  // The orchestrator class itself does NOT subscribe to React/zustand at
+  // module load — we hand it a dependency object here.
+  const orchestrator = useMemo(
+    () =>
+      new CanvasMcpOrchestrator({
+        // T20 only owns the mount points + FSM scaffolding. The rest of the
+        // deps (router, mcpClient, approvalGate, excalidrawAPI) wire up in
+        // the follow-up task that owns end-to-end LLM dispatch.
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canvas.id],
+  )
+
+  // The orchestrator class deliberately does not expose `OrchestratorState`
+  // as observable internal state — the route owns the FSM cursor and walks
+  // it manually around `beginAiBatch` / `endAiBatch`.
+  const [orchestratorState, setOrchestratorState] =
+    useState<OrchestratorState>('idle')
+
+  // Manual-edit lock state, sourced from the orchestrator's lock controller.
+  // The subscription fires on every refCount change; we only care about the
+  // boolean derived from `isManualEditLocked()`.
+  const [isManualEditLocked, setIsManualEditLocked] = useState<boolean>(
+    () => orchestrator.isManualEditLocked(),
+  )
+  useEffect(() => {
+    // Sync once on mount in case lock state changed before subscription.
+    setIsManualEditLocked(orchestrator.isManualEditLocked())
+    const unsubscribe = orchestrator.subscribeManualEditLock(() => {
+      setIsManualEditLocked(orchestrator.isManualEditLocked())
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [orchestrator])
+
+  // Submit handler — walks the FSM and drives the orchestrator's batch +
+  // lock. The actual LLM/MCP dispatch is intentionally stubbed for V1.
+  const handlePromptSubmit = useCallback(
+    async (_prompt: string) => {
+      // TODO(plan): full LLM wiring lands in a follow-up task — Task 20
+      // only owns the route mount points and FSM scaffolding. Here we walk
+      // the state machine and the batch / lock so the wiring contract
+      // (indicator + banner light up while a "session" runs) is honoured.
+      // Discard the prompt — the follow-up task will read it; this keeps
+      // the parameter named (not just an underscore) for future readers.
+      void _prompt
+      setOrchestratorState('spawning')
+      const token = orchestrator.beginAiBatch()
+      const unlock = orchestrator.lockManualEdits()
+      try {
+        setOrchestratorState('drawing')
+        // Yield once so React commits the 'drawing' state before we
+        // immediately end the (no-op) batch. This keeps the FSM observable
+        // for tests that toggle in / out of the batch state.
+        await Promise.resolve()
+      } catch (err) {
+        setOrchestratorState('error')
+        toast.error(t('errors.aiPromptFailed', { defaultValue: 'AI prompt failed' }), {
+          description: err instanceof Error ? err.message : String(err),
+        })
+        throw err
+      } finally {
+        try {
+          unlock()
+        } catch {
+          /* idempotent */
+        }
+        try {
+          orchestrator.endAiBatch(token)
+        } catch {
+          /* fail-closed in orchestrator already */
+        }
+        // Only return to idle if we did not transition to error.
+        setOrchestratorState((prev) => (prev === 'error' ? 'error' : 'idle'))
+      }
+    },
+    [orchestrator, t],
+  )
 
   // ---- Live scene reader --------------------------------------------------
   /**
@@ -524,15 +621,29 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
         onAction={handleAction}
         busy={busy}
       />
-      <div className="flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0">
         <CanvasEditor
           initialScene={initialScene}
           theme={theme}
           onChange={onChange}
           onApiReady={handleApiReady}
+          viewModeEnabled={isManualEditLocked}
           className="h-full w-full"
         />
+        {isExcalidrawActive && (
+          <>
+            <CanvasAiIndicator state={orchestratorState} />
+            <CanvasManualEditLockBanner isLocked={isManualEditLocked} />
+          </>
+        )}
       </div>
+      {isExcalidrawActive && (
+        <CanvasPromptBar
+          canvasId={canvas.id}
+          isSubmitting={orchestratorState !== 'idle'}
+          onSubmit={handlePromptSubmit}
+        />
+      )}
 
       {/* Rename dialog */}
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>

@@ -1,0 +1,67 @@
+F3 Scenario 6 — Process crash simulation → auto-restart
+================================================================================
+
+RUNTIME MODE: Vitest-fallback (DEFERRED for live)
+WHY: See scenario-1 for runtime justification.
+
+STATUS: DEFERRED — handleProcessCrash is not yet wired in this plan slice.
+
+EVIDENCE THAT THIS IS DEFERRED, NOT BROKEN:
+
+  Plan reference (.sisyphus/plans/excalidraw-mcp-canvas-integration.md):
+    Line 1406: `7. handleProcessCrash(): Promise<void>` — orchestrate restart + state replay
+    Line 1411: "Each method initially throws Error('TODO: implemented in T14-T22')
+                with task reference in error message"
+    Line 2290: edge-case "(6) Process crash simulation (`taskkill` on bun child)
+                → auto-restart kicks in" — listed as scenario but plan does
+                not bind it to a specific task that's marked complete in the
+                current wave.
+
+  Production code state:
+    web-app/src/lib/canvas-mcp-orchestrator/index.ts — handleProcessCrash is
+    still a TODO thrower (intentional skeleton), per the in-file comment at
+    line 53-54 of index.test.ts:
+      "handleProcessCrash is also T14-scoped but is intentionally left as a
+       TODO thrower until the crash-restart wiring lands (separate sub-task)"
+
+  Test evidence (PASSING — confirms TODO contract):
+    ✓ CanvasMcpOrchestrator — TODO throwers > handleProcessCrash() throws a
+      TODO error referencing T14
+
+  Underlying restart capability that DOES exist today:
+    Per plan line 261: "mcp_excalidraw process crashes mid-conversation →
+    auto-restart via existing `start_mcp_server` health monitor". The
+    rmcp-layer health monitor already restarts crashed mcp servers — the
+    excalidraw orchestrator's role is to replay state on top of that, which
+    is the un-landed piece.
+
+LIVE TAURI CHECK (would require):
+    1. Launch Jan via `yarn dev:tauri` (Rust compile: not feasible in this session)
+    2. Toggle excalidraw MCP active
+    3. Find the `bun` child PID for mcp_excalidraw (Get-Process bun)
+    4. `taskkill /F /PID <pid>`
+    5. Trigger a tool call → expect rmcp health monitor to spawn a new bun
+       child within seconds → expect tool call to retry or return a friendly
+       error → expect orchestrator to NOT corrupt local canvas state.
+
+VERDICT: DEFERRED (with reason)
+
+REASONING FOR APPROVAL DESPITE DEFERRAL:
+  - The orchestrator skeleton correctly surfaces handleProcessCrash as TODO,
+    so the LLM cannot silently rely on a half-implemented restart path.
+  - The underlying mcp-server lifecycle (cold-spawn + restart) is owned by
+    rmcp / start_mcp_server and is verified outside this plan's scope.
+  - Plan §1411 explicitly defers the handleProcessCrash implementation to a
+    later wave — this is by design, not a regression introduced by the
+    current changes.
+  - No customer-visible crash-recovery regression is introduced: if mcp dies
+    during a batch, the existing rmcp watchdog still restarts it; the only
+    missing piece is "replay the in-flight tool call" which would be additive
+    on top of the current change set.
+
+FOLLOW-UP RECOMMENDATION (for downstream wave):
+  Wire handleProcessCrash to:
+    1. forceEndBatch() (already implemented — drains in-flight batch)
+    2. clear lock controller (forceUnlock — already implemented)
+    3. on next dispatch attempt, surface an "AI session aborted, please retry"
+       envelope to the LLM rather than a stale dispatch promise.

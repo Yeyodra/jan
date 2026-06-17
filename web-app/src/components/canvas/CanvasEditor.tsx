@@ -73,6 +73,14 @@ export interface CanvasEditorProps {
   onChange?: CanvasEditorChangeHandler
   /** Fires exactly once when the imperative API is first available. */
   onApiReady?: CanvasEditorApiReadyHandler
+  /**
+   * Forwarded to Excalidraw's `viewModeEnabled` prop. T20 wires this to the
+   * orchestrator's manual-edit lock so an in-flight AI batch can freeze
+   * editing without disabling the rest of the UI. Defaults to `false`
+   * (interactive editing) so existing call sites and tests keep their
+   * behaviour.
+   */
+  viewModeEnabled?: boolean
   className?: string
 }
 
@@ -203,6 +211,7 @@ export function CanvasEditor({
   theme,
   onChange,
   onApiReady,
+  viewModeEnabled = false,
   className,
 }: CanvasEditorProps) {
   // Snapshot the initial scene exactly once. Excalidraw's `initialData` is
@@ -256,6 +265,7 @@ export function CanvasEditor({
               initialDataRef.current as unknown as ExcalidrawInitialData
             }
             theme={theme}
+            viewModeEnabled={viewModeEnabled}
             onChange={onChange}
             excalidrawAPI={handleApi}
           />

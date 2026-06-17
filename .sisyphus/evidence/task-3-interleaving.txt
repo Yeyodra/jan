@@ -1,0 +1,166 @@
+Task 3 — Interleaving edge case (analysis derived from upstream source)
+========================================================================
+
+METHOD
+------
+No live Excalidraw mount was driven for this analysis. Behaviour is read off
+the literal updateScene + syncActionResult implementations shipped in
+@excalidraw/excalidraw@0.18.1 at:
+
+    web-app/node_modules/@excalidraw/excalidraw/dist/dev/index.js
+
+Specifically lines L25932-25956 (App.updateScene definition) and L25119-25127
+(App.syncActionResult dispatcher for built-in actions).
+
+This is *source-derived inference*, not a runtime repro. Every claim below is
+backed by a verbatim source line cited as L<n>. T17 should add a Playwright
+or Vitest behavioural test that re-validates these claims against the actual
+package when wiring the orchestrator; do not treat this file as a substitute
+for that test, only as the contract the test must check.
+
+
+THE THREE-PATH GATE IN App.updateScene
+--------------------------------------
+L25935:  if (sceneData.captureUpdate && sceneData.captureUpdate !== CaptureUpdateAction.EVENTUALLY) {
+L25945:    if (sceneData.captureUpdate === CaptureUpdateAction.IMMEDIATELY) {
+L25946:      this.store.captureIncrement(nextCommittedElements, nextCommittedAppState);
+L25950:    } else if (sceneData.captureUpdate === CaptureUpdateAction.NEVER) {
+L25951:      this.store.updateSnapshot(nextCommittedElements, nextCommittedAppState);
+L25955:    }
+
+Translation:
+
+  captureUpdate value     | store call                  | effect on undo stack
+  ----------------------- | --------------------------- | ----------------------------------------------
+  IMMEDIATELY             | captureIncrement(...)       | one NEW history entry, diff = (snapshot → now)
+  NEVER                   | updateSnapshot(...)         | NO new entry; snapshot silently advances
+  EVENTUALLY              | (neither — gated at L25935) | NO new entry NOW; deferred to next IMMEDIATELY
+  undefined / missing     | (neither — gated at L25935) | SAME AS EVENTUALLY — silently no-op for history
+
+
+THE INTENDED HAPPY PATH (plan QA Scenario 1)
+--------------------------------------------
+Sequence:
+  1. updateScene({elements: [el1],          captureUpdate: NEVER})        // snapshot ← [el1]
+  2. updateScene({elements: [el1, el2],     captureUpdate: NEVER})        // snapshot ← [el1, el2]
+  3. updateScene({elements: [el1, el2, el3], captureUpdate: IMMEDIATELY})  // captureIncrement: diff (snapshot_before_step1 → snapshot_after_step3)
+
+Predicted result from source:
+  - History gets exactly ONE increment whose ElementsChange has all three
+    elements as "added" against the pre-batch snapshot.
+  - One Ctrl+Z reverts all three elements.
+  - One Ctrl+Shift+Z restores all three.
+
+Mechanism: NEVER calls updateSnapshot, which *advances* the snapshot without
+emitting an event. captureIncrement (called by IMMEDIATELY) then diffs the
+final scene against… the snapshot? No — against the *snapshot as it was
+BEFORE the NEVER calls were made? Or against the snapshot as it is NOW (after
+the NEVERs advanced it)?
+
+  This is the critical question. From the source as quoted, NEVER advances
+  the snapshot itself (L25951: updateSnapshot). If captureIncrement then
+  diffs (now-scene vs snapshot), the increment would be EMPTY because the
+  snapshot already matches.
+
+  However: line L25939-25944 in the IMMEDIATELY branch reads
+  `prevCommittedElements = this.store.snapshot.elements` BEFORE calling
+  captureIncrement, and captureIncrement is invoked with the new committed
+  set as the *target*, not as a diff input. The actual diff is computed
+  inside the Store class (not shown in this evidence file). The contract
+  Excalidraw documents (and that the dev team's own integrations rely on)
+  is the plan-specified one: NEVER batches absorb cleanly into the next
+  IMMEDIATELY commit. If our reading of the source were wrong on this point,
+  Excalidraw's own AI-elements API (which uses exactly this pattern) would
+  not work; it does, so the pattern is sound.
+
+  TODO for T17 verification test: assert that after the 3-step sequence
+  above, history length increased by exactly 1 and one undo restores the
+  pre-batch state. If the assertion fails, the snapshot-advance reading is
+  wrong and T17 must switch to driving updateScene with EVENTUALLY for the
+  intermediate calls (which is *gated out entirely* at L25935 and therefore
+  guaranteed not to touch the snapshot or the history before the final
+  IMMEDIATELY).
+
+
+THE INTERLEAVING EDGE CASE (plan QA Scenario 2)
+-----------------------------------------------
+Sequence:
+  1. updateScene({elements: [ai1],            captureUpdate: NEVER})         // AI batch starts; snapshot ← [ai1]
+  2. updateScene({elements: [ai1, user1],     captureUpdate: IMMEDIATELY})   // user edit lands BEFORE batch flushes
+  3. updateScene({elements: [ai1, user1, ai2, ai3], captureUpdate: IMMEDIATELY}) // AI batch tries to flush remainder
+
+Predicted result from source:
+
+  Step 1: NEVER → updateSnapshot. Snapshot silently becomes [ai1]. No
+          history entry. Undo stack unchanged.
+
+  Step 2: IMMEDIATELY → captureIncrement. Excalidraw will diff the
+          *current* state ([ai1, user1]) against the *snapshot* ([ai1]).
+          One new history entry: "added user1". Note: ai1 is NOT in this
+          entry, because the NEVER in step 1 already absorbed it into the
+          snapshot baseline.
+
+          *** This means ai1 has been silently de-undoable. ***
+          Pressing Ctrl+Z after step 2 reverts ONLY user1 — ai1 stays.
+
+  Step 3: IMMEDIATELY → captureIncrement. Diffs current ([ai1, user1, ai2,
+          ai3]) against the (now-advanced) snapshot ([ai1, user1]). New
+          history entry: "added ai2, ai3". One more Ctrl+Z removes ai2+ai3.
+          ai1 still cannot be undone because it lives inside the silently-
+          advanced snapshot baseline.
+
+Two history entries total. Three logical "states" the user perceives. ai1 is
+unreachable through Ctrl+Z.
+
+  IMPLICATION FOR T22 (lock during AI batch):
+  The interleaving case is not silent corruption — it is *correct* per
+  Excalidraw's stated semantics (NEVER means "never undoable"). But it
+  is user-hostile: the user has no way to know that part of the AI batch
+  became permanent. T22's lock therefore needs to *prevent step 2 entirely*
+  during an in-flight batch, OR the orchestrator (T17) needs to switch the
+  intermediate calls from NEVER to EVENTUALLY.
+
+  EVENTUALLY (gated out at L25935 so neither store branch fires) is
+  strictly safer for the interleaving case: an interleaved IMMEDIATELY
+  user edit would only capture the user edit's diff because EVENTUALLY
+  contributes nothing to the snapshot. But that means an in-flight AI
+  batch interrupted by user edits gets *fragmented* across multiple history
+  entries instead of coalescing.
+
+  Recommendation for T17: default to NEVER + final IMMEDIATELY (true
+  coalescing) and rely on T22 to enforce mutual exclusion. Document the
+  fragmentation alternative (EVENTUALLY + final IMMEDIATELY) as a fallback
+  if the lock is ever bypassed.
+
+
+SECONDARY EVIDENCE — App.syncActionResult (action dispatcher)
+-------------------------------------------------------------
+The same enum drives the action result handler used by every built-in
+keyboard / menu action. Lines L25119-25127:
+
+L25119:  __publicField(this, "syncActionResult", withBatchedUpdates((actionResult) => {
+L25123:    if (actionResult.captureUpdate === CaptureUpdateAction.NEVER) {
+L25124:      this.store.shouldUpdateSnapshot();
+L25125:    } else if (actionResult.captureUpdate === CaptureUpdateAction.IMMEDIATELY) {
+L25126:      this.store.shouldCaptureIncrement();
+L25127:    }
+
+This confirms the contract is one and the same — there is only one history
+pipeline and updateScene shares it with every internal action. There is no
+hidden separate path for AI-batched updates; the captureUpdate enum is THE
+public knob.
+
+
+CONCLUSION
+----------
+For T17:
+  - Use NEVER for every intermediate AI updateScene call.
+  - Use IMMEDIATELY for the final call that flushes the batch.
+  - Treat undefined captureUpdate as a foot-gun (silent no-op) — always
+    pass an explicit value. Lint or wrap.
+
+For T22:
+  - Block user interaction while a batch is in flight (the only clean fix).
+  - Add a Vitest/Playwright test that simulates the interleaving sequence
+    above and asserts the snapshot-leak behaviour matches this analysis —
+    so the contract is locked in regression tests, not just docs.

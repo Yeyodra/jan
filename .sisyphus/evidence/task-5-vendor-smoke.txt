@@ -1,0 +1,15 @@
+﻿=== Smoke test: bun src-tauri/resources/mcp_excalidraw/dist/index.js --help ===
+Exit code: 0
+Output:
+
+
+=== Spawn check (MCP server starts cleanly, killed after 2s) ===
+Process running after 2s: False
+Stderr (first 500 chars):
+
+
+Stdout (first 500 chars):
+
+
+SHA-256(dist/index.js) = DC1E55ED8C1CB2E2354794C8FDE34A707D3B6E9E824C617C949B550106EFA0BC
+Pinned SHA: c12ff87f6d607ccac7b217ae415bee8d855a067e

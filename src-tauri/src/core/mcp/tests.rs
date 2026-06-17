@@ -968,3 +968,209 @@ fn test_cleanup_own_locks_removes_only_current_pid_locks() {
     // Cleanup
     let _ = std::fs::remove_file(&other_path);
 }
+
+// ============================================================================
+// excalidraw entry in DEFAULT_MCP_CONFIG (T9)
+// ============================================================================
+
+#[test]
+fn test_default_config_has_excalidraw() {
+    use super::constants::DEFAULT_MCP_CONFIG;
+    use super::helpers::extract_command_args;
+
+    let value: serde_json::Value = serde_json::from_str(DEFAULT_MCP_CONFIG)
+        .expect("DEFAULT_MCP_CONFIG must be valid JSON");
+
+    let entry = value["mcpServers"]
+        .get("excalidraw")
+        .expect("excalidraw entry must exist in mcpServers");
+
+    // Raw-JSON shape assertions
+    assert_eq!(entry["command"], "bun");
+    assert_eq!(entry["args"][0], "resources/mcp_excalidraw/dist/index.js");
+    assert_eq!(entry["env"]["ENABLE_CANVAS_SYNC"], "false");
+    assert_eq!(entry["active"], false);
+    assert_eq!(entry["official"], true);
+
+    // Typed McpServerConfig parsing via the same helper used by the runtime
+    let parsed = extract_command_args(entry)
+        .expect("excalidraw entry must parse into McpServerConfig");
+
+    assert_eq!(parsed.command, "bun");
+    assert_eq!(
+        parsed.args[0].as_str().unwrap(),
+        "resources/mcp_excalidraw/dist/index.js"
+    );
+    assert_eq!(
+        parsed.envs.get("ENABLE_CANVAS_SYNC").and_then(|v| v.as_str()),
+        Some("false")
+    );
+
+    println!("{parsed:#?}");
+    println!("active={} official={}", entry["active"], entry["official"]);
+}
+
+/// T12 — End-to-end spawn lifecycle integration test for vendored mcp_excalidraw.
+///
+/// Mirrors the exact spawn pattern used in `helpers.rs:run_mcp_commands` (Command,
+/// kill_on_drop, Windows CREATE_NO_WINDOW, stderr piped, TokioChildProcess::builder,
+/// `().serve(process)` rmcp handshake). Asserts:
+///   1. Handshake within 10s (T4 spike measured ~400ms direct spawn + Windows margin)
+///   2. `service.list_all_tools()` returns >= 24 entries (curation-tolerant)
+///   3. Env propagation proven via separate `bun -e` sub-process inspecting
+///      `process.env.ENABLE_CANVAS_SYNC` and `process.env.JAN_T12_SENTINEL`
+///   4. After service drop + 200ms reap, the bun child PID is gone
+///
+/// Bun resolution: prefers `<CARGO_MANIFEST_DIR>/resources/bin/bun(.exe)` (post
+/// `copy:assets:tauri`), falls back to system `bun` on PATH so CI without the
+/// resource staging step still works.
+#[tokio::test]
+async fn test_excalidraw_spawn_lifecycle() {
+    use rmcp::transport::TokioChildProcess;
+    use rmcp::ServiceExt;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+    use tokio::process::Command as TokioCommand;
+    use tokio::time::timeout;
+
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let bun_exe_name = if cfg!(windows) { "bun.exe" } else { "bun" };
+    let dev_bun = std::path::Path::new(manifest_dir)
+        .join("resources")
+        .join("bin")
+        .join(bun_exe_name);
+    let (bun_path, bun_source) = if dev_bun.exists() {
+        (dev_bun.display().to_string(), "resources/bin")
+    } else {
+        (bun_exe_name.to_string(), "system PATH fallback")
+    };
+    println!("bun-source: {bun_source} -> {bun_path}");
+
+    let dist_path = std::path::Path::new(manifest_dir)
+        .join("resources")
+        .join("mcp_excalidraw")
+        .join("dist")
+        .join("index.js");
+    assert!(
+        dist_path.exists(),
+        "mcp_excalidraw dist missing at {} — T5/T11 should have produced it",
+        dist_path.display()
+    );
+
+    // ---- Sub-test A: env-propagation proof (load-bearing per plan §1329) ----
+    // Spawn `bun -e "..."` with the same env we will pass to mcp_excalidraw and
+    // capture the JSON it prints to stderr. Independent of rmcp.
+    let mut env_probe = TokioCommand::new(&bun_path);
+    env_probe.arg("-e").arg(
+        "console.error(JSON.stringify({CANVAS_SYNC: process.env.ENABLE_CANVAS_SYNC, sentinel: process.env.JAN_T12_SENTINEL}))",
+    );
+    env_probe.env("ENABLE_CANVAS_SYNC", "false");
+    env_probe.env("JAN_T12_SENTINEL", "t12-2026-06-17");
+    env_probe.stdout(Stdio::piped());
+    env_probe.stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        env_probe.creation_flags(0x08000000);
+    }
+    let env_out = env_probe
+        .output()
+        .await
+        .expect("env probe `bun -e` failed to run");
+    let env_stderr =
+        String::from_utf8(env_out.stderr).expect("env probe stderr was not valid UTF-8");
+    println!("env-probe-stderr: {}", env_stderr.trim());
+    let json_line = env_stderr
+        .lines()
+        .find(|l| l.trim_start().starts_with('{'))
+        .expect("env probe did not emit JSON line");
+    let parsed: serde_json::Value =
+        serde_json::from_str(json_line.trim()).expect("env probe JSON parse failed");
+    let canvas_sync = parsed["CANVAS_SYNC"].as_str().unwrap_or("<missing>");
+    let sentinel = parsed["sentinel"].as_str().unwrap_or("<missing>");
+    assert_eq!(canvas_sync, "false", "ENABLE_CANVAS_SYNC did not propagate");
+    assert_eq!(
+        sentinel, "t12-2026-06-17",
+        "JAN_T12_SENTINEL did not propagate"
+    );
+    // Stable prefix the evidence script will grep for:
+    println!("env-pass: ENABLE_CANVAS_SYNC={canvas_sync} JAN_T12_SENTINEL={sentinel}");
+
+    // ---- Sub-test B: rmcp handshake + tools/list against vendored excalidraw ----
+    let mut cmd = TokioCommand::new(&bun_path);
+    cmd.arg("resources/mcp_excalidraw/dist/index.js");
+    cmd.env("ENABLE_CANVAS_SYNC", "false");
+    cmd.env("JAN_T12_SENTINEL", "t12-2026-06-17");
+    cmd.current_dir(manifest_dir);
+    cmd.kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    let start = Instant::now();
+    let (process, _stderr) = TokioChildProcess::builder(cmd)
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("TokioChildProcess::spawn for mcp_excalidraw failed");
+    let child_pid = process.id().expect("child PID must be Some after spawn");
+    println!("child-pid: {child_pid}");
+
+    let service = timeout(Duration::from_secs(10), ().serve(process))
+        .await
+        .expect("MCP handshake timed out (10s)")
+        .expect("MCP handshake returned Err");
+    let handshake_elapsed = start.elapsed();
+    println!("handshake-elapsed: {handshake_elapsed:?}");
+
+    let tools = timeout(Duration::from_secs(10), service.list_all_tools())
+        .await
+        .expect("tools/list timed out (10s)")
+        .expect("tools/list returned Err");
+    println!("tools-count: {}", tools.len());
+    assert!(
+        tools.len() >= 24,
+        "expected >= 24 tools from mcp_excalidraw, got {}",
+        tools.len()
+    );
+
+    // Cancel rmcp service cleanly (matches helpers.rs:1119-1120 pattern).
+    let _ = service.cancel().await;
+    // kill_on_drop fires when `service` is dropped above; give the OS time to reap.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // ---- Sub-test C: zombie check on the captured PID ----
+    let still_alive = if cfg!(windows) {
+        let out = TokioCommand::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!(
+                    "if (Get-Process -Id {child_pid} -ErrorAction SilentlyContinue) {{ 'ALIVE' }} else {{ 'DEAD' }}"
+                ),
+            ])
+            .output()
+            .await
+            .expect("powershell PID probe failed");
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        println!("pid-probe: {s}");
+        s.contains("ALIVE")
+    } else {
+        // POSIX: kill -0 returns 0 if signal could be delivered (process alive)
+        let status = TokioCommand::new("kill")
+            .args(["-0", &child_pid.to_string()])
+            .status()
+            .await
+            .expect("kill -0 probe failed");
+        println!("pid-probe-exit: {status:?}");
+        status.success()
+    };
+    assert!(
+        !still_alive,
+        "mcp_excalidraw child PID {child_pid} still alive after drop+200ms"
+    );
+
+    let total_elapsed = start.elapsed();
+    println!("spawn-elapsed: {total_elapsed:?}");
+}

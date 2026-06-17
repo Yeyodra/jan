@@ -1,0 +1,19 @@
+﻿=== Select-String NOTICE for mcp_excalidraw or Excalidraw ===
+mcp_excalidraw matches: 3
+Excalidraw matches: 4
+
+NOTICE:21:### mcp_excalidraw
+NOTICE:23:Copyright (c) 2024 MCP Excalidraw Server (yctimlin <c22647809@gmail.com>)
+NOTICE:25:Source: https://github.com/yctimlin/mcp_excalidraw at c12ff87f6d607ccac7b217ae415bee8d855a067e
+NOTICE:26:Full license text: src-tauri/resources/mcp_excalidraw/LICENSE
+
+=== Select-String NOTICE for c12ff87f ===
+
+NOTICE:25:Source: https://github.com/yctimlin/mcp_excalidraw at c12ff87f6d607ccac7b217ae415bee8d855a067e
+Count: 1
+
+=== Test-Path src-tauri/resources/mcp_excalidraw/LICENSE ===
+True
+
+=== git log --follow src-tauri/resources/mcp_excalidraw/LICENSE ===
+62a71fe30 chore(mcp): vendor mcp_excalidraw at c12ff87f

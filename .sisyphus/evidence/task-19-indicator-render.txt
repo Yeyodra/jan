@@ -1,0 +1,70 @@
+=============================================================================
+T19 — CanvasAiIndicator render-trace evidence
+=============================================================================
+Date:    2026-06-17
+Branch:  feat/excalidraw-mcp
+Plan:    .sisyphus/plans/excalidraw-mcp-canvas-integration.md (line 1921)
+File:    web-app/src/components/canvas/CanvasAiIndicator.tsx
+Tests:   web-app/src/components/canvas/CanvasAiIndicator.test.tsx
+Runner:  bunx vitest run (vitest 3.2.4, jsdom env)
+
+OrchestratorState union (5 values, locked — types.ts §61-66):
+  'idle' | 'spawning' | 'awaiting-approval' | 'drawing' | 'error'
+
+-----------------------------------------------------------------------------
+Per-state render outcomes (vitest --reporter=verbose)
+-----------------------------------------------------------------------------
+
+state="idle"
+  PASS  renders nothing when state="idle"          (35ms)
+  → container.firstChild === null
+  → no "AI is drawing…" text in DOM
+  → no role="status" element
+
+state="error"
+  PASS  renders nothing when state="error"          (3ms)
+  → container.firstChild === null
+  → no "AI is drawing…" text in DOM
+  → no role="status" element
+
+state="spawning"
+  PASS  renders spinner + "AI is drawing…"          (92ms — first render incl. mount)
+  → screen.getByText("AI is drawing…")  ✓
+  → screen.getByRole("status")          ✓
+  → spinner (Loader / animate-spin)     ✓ (data-testid="canvas-ai-indicator")
+
+state="awaiting-approval"
+  PASS  renders spinner + "AI is drawing…"          (11ms)
+  → identical DOM to spawning, data-state="awaiting-approval"
+
+state="drawing"
+  PASS  renders spinner + "AI is drawing…"          (9ms)
+  → identical DOM to spawning, data-state="drawing"
+
+-----------------------------------------------------------------------------
+Accessibility evidence
+-----------------------------------------------------------------------------
+
+PASS  role="status" + aria-live="polite" on wrapper            (8ms)
+PASS  pointer-events-none class present on overlay             (6ms)
+      → guarantees overlay never blocks canvas pointer events
+      → matches plan §1937 hard requirement
+
+-----------------------------------------------------------------------------
+Auto-hide / state-transition evidence
+-----------------------------------------------------------------------------
+
+PASS  drawing → idle   removes the indicator from the tree     (5ms)
+PASS  drawing → error  removes the indicator from the tree     (4ms)
+PASS  idle → spawning  surfaces the indicator (cold-spawn UX)  (4ms)
+
+-----------------------------------------------------------------------------
+Summary
+-----------------------------------------------------------------------------
+
+Test Files: 1 passed (1)
+Tests:      15 passed (15)
+
+All visible-state outcomes (3) and hidden-state outcomes (2) verified.
+All transitions among the 5 OrchestratorState values render the expected
+DOM. CanvasAiIndicator behavioural contract upheld end-to-end.

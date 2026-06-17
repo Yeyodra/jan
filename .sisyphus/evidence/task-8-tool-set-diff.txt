@@ -1,0 +1,76 @@
+T8 Tool Set Cross-Reference — 2026-06-16T21:45:39.625Z
+========================================================================
+
+Source: .sisyphus/evidence/task-2-bun-tools-list.json (T2 spike)
+Module: web-app/src/lib/canvas-mcp-orchestrator/curated-tools.ts
+
+Canonical tools/list count: 26
+EXCALIDRAW_MUTATING_TOOLS:  19
+EXCALIDRAW_READONLY_TOOLS:  5
+EXCALIDRAW_ALLOWED_TOOLS:   24  (= mutating + readonly)
+EXCALIDRAW_BLOCKED_TOOLS:   2
+|allowed| + |blocked|:      26
+
+-- Canonical 26 tool names (sorted) --
+  align_elements
+  batch_create_elements
+  clear_canvas
+  create_element
+  create_from_mermaid
+  delete_element
+  describe_scene
+  distribute_elements
+  duplicate_elements
+  export_scene
+  export_to_excalidraw_url
+  export_to_image
+  get_canvas_screenshot
+  get_element
+  get_resource
+  group_elements
+  import_scene
+  lock_elements
+  query_elements
+  read_diagram_guide
+  restore_snapshot
+  set_viewport
+  snapshot_scene
+  ungroup_elements
+  unlock_elements
+  update_element
+
+-- EXCALIDRAW_ALLOWED_TOOLS (24, sorted) --
+  align_elements
+  batch_create_elements
+  clear_canvas
+  create_element
+  create_from_mermaid
+  delete_element
+  describe_scene
+  distribute_elements
+  duplicate_elements
+  export_scene
+  export_to_excalidraw_url
+  get_element
+  get_resource
+  group_elements
+  import_scene
+  lock_elements
+  query_elements
+  read_diagram_guide
+  restore_snapshot
+  set_viewport
+  snapshot_scene
+  ungroup_elements
+  unlock_elements
+  update_element
+
+-- EXCALIDRAW_BLOCKED_TOOLS (2, sorted) --
+  export_to_image
+  get_canvas_screenshot
+
+-- Set differences --
+canonical \ (allowed ∪ blocked):  [] (empty)
+(allowed ∪ blocked) \ canonical:  [] (empty)
+
+STATUS: PASS

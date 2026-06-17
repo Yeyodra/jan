@@ -1,0 +1,46 @@
+F3 Scenario 3 — Mutating tool → approval modal → approve executes; deny returns error to LLM
+================================================================================
+
+RUNTIME MODE: Vitest-fallback
+WHY: See scenario-1.
+
+CONTRACT EVIDENCE — passing vitest cases:
+
+  src/lib/canvas-mcp-orchestrator/dispatch.test.ts (approval-gate suite)
+    ✓ dispatchExcalidrawTool — approval gate > forwards a mutating tool when approval is granted
+    ✓ dispatchExcalidrawTool — approval gate > returns "user denied tool call" when approval is denied and does NOT invoke mcp
+    ✓ dispatchExcalidrawTool — approval gate > fails closed when no approvalGate is configured for a mutating tool
+    ✓ dispatchExcalidrawTool — readonly bypass > does NOT invoke the approval gate for a readonly tool
+    ✓ dispatchExcalidrawTool — readonly bypass > readonly tool works even when no approvalGate is configured
+    ✓ dispatchExcalidrawTool — transport failures > never re-throws even when the approval gate itself rejects
+
+  src/lib/canvas-mcp-orchestrator/index.test.ts (orchestrator-level integration)
+    ✓ CanvasMcpOrchestrator — dispatchToolCall (wired in T15) > forwards a mutating tool to mcpClient when the gate approves
+    ✓ CanvasMcpOrchestrator — dispatchToolCall (wired in T15) > returns user-denied envelope when approval gate resolves false
+    ✓ CanvasMcpOrchestrator — dispatchToolCall (wired in T15) > fails closed when approvalGate is undefined for a mutating tool
+
+  src/lib/canvas/dispatch.test.ts
+    ✓ approval-gate predicate (mirrors $threadId.tsx) > auto-approves read-only canvas tools (canvas_list, canvas_read)
+
+CONTRACT MAPPING:
+  - APPROVE branch:  "forwards a mutating tool when approval is granted" + the
+                     orchestrator equivalent — proves that on user-grant, the
+                     tool dispatches to mcpClient and the result content is
+                     returned to the LLM unchanged.
+  - DENY branch:     "returns 'user denied tool call' when approval is denied
+                     and does NOT invoke mcp" + the orchestrator equivalent —
+                     proves the LLM receives a synthetic { error: 'user denied
+                     tool call' } envelope and the underlying mcp transport is
+                     NEVER reached.
+  - FAIL-CLOSED:     If the approval gate is somehow not wired, mutating tools
+                     are still rejected ("fails closed when no approvalGate is
+                     configured"). This is critical security-wise.
+  - READONLY BYPASS: Read-only tools (canvas_list, canvas_read) skip the gate
+                     entirely — no modal appears for safe queries.
+
+VERDICT: PASS
+
+LIMITATION: The modal UI itself (the React component that prompts the user)
+was not visually verified — only the gate behaviour around it. The modal is
+shared with the existing MCP approval flow at $threadId.tsx, which has its
+own coverage outside this plan's scope.
