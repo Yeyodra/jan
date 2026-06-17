@@ -1,0 +1,12 @@
+{
+  "_source": "src-tauri/src/core/mcp/constants.rs (lines 61-67)",
+  "_extracted_for": "Wave 5 / Task 21 — Settings > MCP toggle wire-up + label",
+  "_invariant": "excalidraw is registered in DEFAULT_MCP_CONFIG with official=true, active=false (disabled by default)",
+  "excalidraw": {
+    "command": "bun",
+    "args": ["resources/mcp_excalidraw/dist/index.js"],
+    "env": { "ENABLE_CANVAS_SYNC": "false" },
+    "active": false,
+    "official": true
+  }
+}

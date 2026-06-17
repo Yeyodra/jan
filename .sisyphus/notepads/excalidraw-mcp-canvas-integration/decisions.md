@@ -226,3 +226,24 @@ Considered three options:
 3. Local `const CAPTURE_UPDATE = { ... } as const`. - CHOSEN. Mirrors the spike-confirmed values, gives autocompletion to call sites, costs nothing at runtime, and stays type-safe via `CaptureUpdateValue`.
 
 If T20+ needs the runtime enum (unlikely - the wiring layer can use the same local mirror), it can still import it at the boundary.
+
+---
+
+## Wave 5 / T21 — verify-only + 1-line bug fix (2026-06-17)
+
+**Decision**: classified as a **verification task with one collateral fix**, not a new-UI task.
+
+**What changed in the codebase**:
+- `web-app/src/routes/settings/mcp-servers.tsx` line 667: scoped the Jan Browser Extension install-note from `{config.official && (...)}` to `{config.official && key === 'Jan Browser MCP' && (...)}`. Without this fix, T21 would have shipped a UX bug where Excalidraw users were told to install a Chrome extension.
+- New test file `mcp-servers.official-badge.test.tsx` to lock the badge + scoped-note behavior.
+
+**What did NOT change**:
+- The "Official" badge itself (already correct, generic on `config.official`).
+- The toggle handler (`toggleServer`) — already generic.
+- The Rust bridge (`activate_mcp_server` / `deactivate_mcp_server`) — already generic, validated in T11/T12.
+- `DEFAULT_MCP_CONFIG` — owned by T9; left alone.
+
+**Why scope by key, not by capabilities/url**:
+The Jan Browser MCP needs the Chrome extension because of the Bridge port (the entry's env contains `BRIDGE_HOST` / `BRIDGE_PORT`). I considered keying on `env.BRIDGE_PORT` but rejected it: future built-ins might also use a bridge for unrelated reasons. Keying on the literal entry name keeps the coupling explicit and easy to audit.
+
+**Alternative considered**: introducing a `requiresBrowserExtension: true` flag on the config schema. Rejected as scope creep — T21 is supposed to be verification-only, and the schema change would propagate into Rust, defaults, JSON validation, and the AddEditMCPServer dialog. The 1-line key check is the minimal correct fix.

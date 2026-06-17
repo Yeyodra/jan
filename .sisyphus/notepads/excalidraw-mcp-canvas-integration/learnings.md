@@ -604,3 +604,21 @@ Reason: keeps the prototype's own-property list at exactly the 11 canonical resp
 ### Test runner gotcha
 
 `bun test` runs vitest specs but doesn't pick up vitest's `vi` mock from the same import surface as `npx vitest`. Both runners pass on this PC after T17, but CI should keep using `bun typecheck` + `npx vitest run` (the `test` script in package.json).
+
+---
+
+## Wave 5 / T21 — Settings > MCP toggle wire-up + label (2026-06-17)
+
+**How Jan's Settings > MCP UI handles `official: true`** (`web-app/src/routes/settings/mcp-servers.tsx`):
+
+1. **Generic rendering loop** at L611: `Object.entries(mcpServers).map(...)` — every entry in the zustand store is rendered identically; there is **no per-server special-casing for excalidraw**. Adding a new built-in entry to `DEFAULT_MCP_CONFIG` (Rust side, `src-tauri/src/core/mcp/constants.rs`) is enough to surface it in the UI.
+
+2. **"Official" badge** at L628-637 — pill with the Jan logo + the word "Official", shown for any entry with `config.official === true`. This is the only label/badge the plan asked for.
+
+3. **Toggle plumbing** at L331-396 (`toggleServer`) → `serviceHub.mcp().activateMCPServer(name, config)` / `deactivateMCPServer(name)` (`web-app/src/services/mcp/tauri.ts` L121-127) → Rust `activate_mcp_server` / `deactivate_mcp_server` (`src-tauri/src/core/mcp/commands.rs` L133-173) → calls into the same generic `start_mcp_server` flow validated in T11/T12. **No per-server branching** — the Rust handlers accept `name` + `config` blindly.
+
+4. **Bug discovered**: lines 667-682 used to render the "Requires Jan Browser Extension" note for **every** `config.official` entry. Excalidraw is `official: true` but does not need a Chrome extension, so the note bled onto the wrong entry. Fixed by scoping the conditional to `key === 'Jan Browser MCP'` (the literal key in `DEFAULT_MCP_CONFIG`). Test fixture in `mcp-servers.official-badge.test.tsx` locks this in.
+
+**Pattern for future built-in entries**: just add to `DEFAULT_MCP_CONFIG` with `official: true, active: false`. The "Official" badge appears for free; if your entry needs server-specific UX (like the Jan Browser MCP install link), gate it on `key === 'YourServerName'`, not on `config.official`.
+
+**Test infrastructure quirk**: `bun test` fails on this codebase because the i18n setup uses Vite-only `import.meta.glob`. Run via `bun run test -- <path>` (which proxies to `vitest --run`) instead.

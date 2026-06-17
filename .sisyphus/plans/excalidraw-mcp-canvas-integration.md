@@ -1918,7 +1918,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `web-app/src/components/canvas/CanvasPromptBar.tsx`, `CanvasPromptBar.test.tsx`
   - Pre-commit: `cd web-app && bun typecheck && bun test src/components/canvas/CanvasPromptBar`
 
-- [ ] 19. CanvasAiIndicator (spinner + "AI is drawing…")
+- [x] 19. CanvasAiIndicator (spinner + "AI is drawing…")
 
   **What to do**:
   - Create `web-app/src/components/canvas/CanvasAiIndicator.tsx`
@@ -2092,7 +2092,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `web-app/src/routes/canvas/$canvasId.tsx`, possibly `web-app/src/routes/canvas/__tests__/canvasId.test.tsx`
   - Pre-commit: `cd web-app && bun typecheck && bun test src/routes/canvas/`
 
-- [ ] 21. Settings > MCP toggle wire-up + label "Excalidraw (built-in)"
+- [x] 21. Settings > MCP toggle wire-up + label "Excalidraw (built-in)"
 
   **What to do**:
   - The existing Settings > MCP UI (`web-app/src/routes/settings/mcp-servers.tsx`) already renders entries from MCP config
@@ -2135,10 +2135,10 @@ Max Concurrent: 5 (Wave 4)
   - Built-in (official) entries already exist in DEFAULT_MCP_CONFIG; the UI already handles them — task is verification + label, not new logic
 
   **Acceptance Criteria**:
-  - [ ] Settings > MCP page shows `excalidraw` entry with toggle
-  - [ ] Toggle ON → process spawns (verify via Rust logs); 24 tools added to LLM tool list (T8 filter applied)
-  - [ ] Toggle OFF → process exits within 5s; tools removed from list
-  - [ ] `official: true` badge or label visible on the entry
+  - [x] Settings > MCP page shows `excalidraw` entry with toggle
+  - [x] Toggle ON → process spawns (verify via Rust logs); 24 tools added to LLM tool list (T8 filter applied)
+  - [x] Toggle OFF → process exits within 5s; tools removed from list
+  - [x] `official: true` badge or label visible on the entry
 
   **QA Scenarios (MANDATORY)**:
 
