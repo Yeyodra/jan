@@ -1,0 +1,24 @@
+Task: T4 — CanvasModelPicker component
+Date: 2026-06-17
+Command: cd web-app && bun run vitest --run src/components/canvas/CanvasModelPicker
+
+=== TEST RESULTS ===
+
+ RUN  v3.2.4 C:/Users/Nazril/Documents/Projek/jan/web-app
+
+ ✓ src/components/canvas/CanvasModelPicker.test.tsx (14 tests) 851ms
+
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  20:36:04
+   Duration  3.85s (transform 209ms, setup 505ms, collect 677ms, tests 851ms, environment 1.01s, prepare 222ms)
+
+=== LSP DIAGNOSTICS ===
+No diagnostics found on CanvasModelPicker.tsx
+
+=== TYPECHECK ===
+bun x tsc -b --noEmit — zero errors on CanvasModelPicker.tsx (no output = clean)
+
+=== FILES CREATED ===
+web-app/src/components/canvas/CanvasModelPicker.tsx
+web-app/src/components/canvas/CanvasModelPicker.test.tsx
