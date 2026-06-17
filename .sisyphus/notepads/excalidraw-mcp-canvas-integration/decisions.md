@@ -178,3 +178,51 @@ export type CanvasMutation =
 The reflection test in `index.test.ts` ("prototype owns exactly the 11 responsibility methods") would fail if these new methods landed on the prototype. The plan's 11-responsibility contract is canonical; new helpers must not pollute it. The same precedent exists for `setThreadId` (T15).
 
 This pattern lets the orchestrator grow auxiliary instance methods without touching the responsibility registry.
+
+
+## T17 - Decisions
+
+### Symbol vs uuid for BatchToken (CONFIRMED: symbol)
+
+The plan §1738 said "uuid"; the T13 skeleton declared the type as `symbol & { __brand: 'CanvasMcpBatchToken' }`. Stuck with symbol because:
+
+1. The skeleton type was already shipped (T13). Changing it to string would require a type-flip that ripples through `index.test.ts` and any future callers.
+2. Symbols guarantee uniqueness without a uuid library or `crypto.randomUUID` call, keeping `batch.ts` dep-free.
+3. Two concurrent orchestrator instances (rare but possible if the user opens two canvases) cannot accidentally collide on a token.
+
+If a future task needs serializable tokens (e.g. if we ever persist batch state across a process restart), switching to uuid is a single-line change in `createBatchToken()`.
+
+### `forceEnd` semantics: drains, does NOT cancel
+
+The plan didn't specify whether `forceEnd` should commit (capturing whatever was painted so far) or roll back. Chose COMMIT because:
+
+1. NEVER paints have already mutated Excalidraw's snapshot. Rolling back would require either issuing a competing IMMEDIATELY with the pre-batch state (which we don't have - the batch never captured it) or calling `excalidrawAPI.history.undo()` (which doesn't help since no history entry has been created yet). Committing is the only consistent path.
+2. Plan §1742 says "still call endAiBatch with last known good state" - the spirit of the requirement is committed-not-rolled-back.
+3. UX is better: if the user starts an AI batch then closes the tab, the partial work shows up as a single undo step they can revert manually if they want.
+
+### `applyDuringBatch` as orchestrator method (YES, exposed)
+
+The skeleton had only `beginAiBatch` / `endAiBatch` as canonical responsibilities (the original 11). But the BatchController has 5 methods: begin, end, applyDuringBatch, forceEnd, isInBatch. Exposed `applyDuringBatch` and `forceEndBatch` as INSTANCE ARROWS on the orchestrator class so:
+
+1. T20 (chat-dispatcher wiring) has a single API surface to call - no need to drill into `orchestrator['batch'].applyDuringBatch(...)`.
+2. The 11-method canonical contract stays intact (instance arrows are off-prototype).
+3. `isInBatch` was NOT exposed on the orchestrator - it's an internal observability helper used only by tests of `batch.ts` directly. T20 doesn't need it.
+
+### Failure during applyDuringBatch: lastKnownGoodState NOT updated on throw
+
+The implementation only updates `lastKnownGoodState` AFTER a successful `updateScene` call. This is deliberate:
+
+- If the throw happened mid-paint, Excalidraw's snapshot may or may not have advanced. We can't know.
+- The previous `lastKnownGoodState` is the last DEFINITELY-painted state. Committing that on `end()` gives a defensible undo point.
+- If we'd updated `lastKnownGoodState` BEFORE the call, a recovered commit would carry an element-set that may never have actually been painted.
+
+Trade-off: in the failure case, the user sees their final undo step revert MORE than they expected (back to the last successful intermediate, not the failed one). Acceptable - the plan's "don't leave orchestrator in zombie batch mode" trumps "perfect element-set fidelity in a failure case".
+
+### CaptureUpdateAction enum: local mirror, NOT runtime import
+
+Considered three options:
+1. `import { CaptureUpdateAction } from '@excalidraw/excalidraw'` and use `.IMMEDIATELY`/`.NEVER`. - REJECTED. Breaks the no-Excalidraw-at-load invariant.
+2. `import type { CaptureUpdateAction } from '@excalidraw/excalidraw'` and use string literals only. - PARTIAL. The type exists but values would be hard-coded strings without enum guidance.
+3. Local `const CAPTURE_UPDATE = { ... } as const`. - CHOSEN. Mirrors the spike-confirmed values, gives autocompletion to call sites, costs nothing at runtime, and stays type-safe via `CaptureUpdateValue`.
+
+If T20+ needs the runtime enum (unlikely - the wiring layer can use the same local mirror), it can still import it at the boundary.

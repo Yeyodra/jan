@@ -1731,7 +1731,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `web-app/src/lib/canvas-mcp-orchestrator/id-translation.ts`, `id-translation.test.ts`
   - Pre-commit: `cd web-app && bun typecheck && bun test src/lib/canvas-mcp-orchestrator/`
 
-- [ ] 17. Undo grouping via captureUpdate (AI batch = 1 step)
+- [x] 17. Undo grouping via captureUpdate (AI batch = 1 step)
 
   **What to do**:
   - Implement `beginAiBatch()` and `endAiBatch(token)`:

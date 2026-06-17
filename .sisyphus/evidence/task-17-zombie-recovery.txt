@@ -1,0 +1,19 @@
+=== T17 zombie-recovery scenario ===
+Step 1: beginAiBatch
+  ΓåÆ token allocated; isInBatch=true
+Step 2: applyDuringBatch([a]) ΓÇö succeeds
+updateScene OK [captureUpdate=NEVER] [elements=a]
+Step 3: applyDuringBatch([a,b]) ΓÇö succeeds (becomes lastKnownGoodState)
+updateScene OK [captureUpdate=NEVER] [elements=a,b]
+Step 4: applyDuringBatch([a,b,c]) ΓÇö INTENTIONALLY THROWS
+updateScene throws on NEVER apply with 3 elements
+WARN: canvas-mcp-orchestrator: applyDuringBatch threw; batch remains in flight
+TELEMETRY: batch.apply_error
+  ΓåÆ did NOT throw to caller; isInBatch=true (batch still in flight)
+Step 5: endAiBatch(tok) ΓÇö must still commit IMMEDIATELY with last good state ([a,b])
+updateScene OK [captureUpdate=IMMEDIATELY] [elements=a,b]
+  ΓåÆ isInBatch=false (batch closed)
+
+=== TRACE COMPLETE ===
+Verification: final IMMEDIATELY commit carried [a,b], NOT [a,b,c]
+              orchestrator NOT in zombie batch mode after recovery

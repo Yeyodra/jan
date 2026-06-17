@@ -44,14 +44,15 @@ function fakeTool(name: string): MCPTool {
 // Expected method ↔ implementing-task pairs. Drives the parametric TODO
 // assertions below.
 //
-// T14/T15/T16 partial-completion note: `resolveActiveCanvas`,
-// `syncStateFromCanvas`, `dispatchToolCall`, `translateElementId`, and
-// `translateToolResult` have REAL implementations as of T14/T15/T16 and have
-// moved into the dedicated "real behaviour" describe blocks below. The
-// remaining T14 method (`applyTheme`) and the T17/T22 methods still throw
-// TODO and stay in this list. `handleProcessCrash` is also T14-scoped but
-// is intentionally left as a TODO thrower until the crash-restart wiring
-// lands (separate sub-task — see plan §1480 follow-ups).
+// T14/T15/T16/T17 partial-completion note: `resolveActiveCanvas`,
+// `syncStateFromCanvas`, `dispatchToolCall`, `translateElementId`,
+// `translateToolResult`, `beginAiBatch`, and `endAiBatch` have REAL
+// implementations as of T14/T15/T16/T17 and have moved into the dedicated
+// "real behaviour" describe blocks below. The remaining T14 method
+// (`applyTheme`) and the T22 method still throw TODO and stay in this list.
+// `handleProcessCrash` is also T14-scoped but is intentionally left as a
+// TODO thrower until the crash-restart wiring lands (separate sub-task —
+// see plan §1480 follow-ups).
 const RESPONSIBILITY_TASK_MAP: ReadonlyArray<{
   name: Exclude<
     OrchestratorResponsibilityName,
@@ -61,11 +62,11 @@ const RESPONSIBILITY_TASK_MAP: ReadonlyArray<{
     | 'dispatchToolCall'
     | 'translateElementId'
     | 'translateToolResult'
+    | 'beginAiBatch'
+    | 'endAiBatch'
   >
   task: string
 }> = [
-  { name: 'beginAiBatch', task: 'T17' },
-  { name: 'endAiBatch', task: 'T17' },
   { name: 'handleProcessCrash', task: 'T14' },
   { name: 'applyTheme', task: 'T14' },
   { name: 'lockManualEdits', task: 'T22' },
@@ -154,8 +155,6 @@ describe('CanvasMcpOrchestrator — TODO throwers', () => {
       // Some methods are async (return Promise), some sync. Handle both.
       const invoke = () => {
         switch (name) {
-          case 'endAiBatch':
-            return method.call(o, undefined as unknown as BatchToken)
           case 'applyTheme':
             return method.call(o, [])
           default:
@@ -530,6 +529,131 @@ describe('CanvasMcpOrchestrator — translateToolResult (wired in T16)', () => {
     if (out[0].kind !== 'update') throw new Error('expected update')
     // Must reuse the existing mapping rather than allocating a new id.
     expect(out[0].ids).toEqual([canvasId])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// beginAiBatch / endAiBatch — REAL behaviour (wired in T17)
+// ---------------------------------------------------------------------------
+//
+// Exhaustive coverage of the begin/apply/end lifecycle + zombie recovery
+// lives in `./batch.test.ts`. The integration assertions here only confirm
+// the orchestrator class WIRES THROUGH correctly: the `excalidrawAPI` from
+// `deps` is forwarded to the batch controller; the IMMEDIATELY commit fires
+// at `endAiBatch` time; nested `beginAiBatch` returns the existing token.
+// Also confirms the new instance-arrow methods (`applyDuringBatch`,
+// `forceEndBatch`) are wired and do NOT pollute the prototype.
+
+describe('CanvasMcpOrchestrator — beginAiBatch/endAiBatch (wired in T17)', () => {
+  it('beginAiBatch returns a BatchToken; endAiBatch commits IMMEDIATELY exactly once', () => {
+    const updateScene = vi.fn()
+    const o = makeOrchestrator({ excalidrawAPI: { updateScene } })
+
+    const token = o.beginAiBatch()
+    expect(typeof token).toBe('symbol')
+
+    o.applyDuringBatch([{ id: 'el-1', type: 'rectangle' }])
+    o.endAiBatch(token)
+
+    const captures = updateScene.mock.calls.map(
+      (args) => (args[0] as { captureUpdate: string }).captureUpdate,
+    )
+    expect(captures.filter((v) => v === 'NEVER')).toHaveLength(1)
+    expect(captures.filter((v) => v === 'IMMEDIATELY')).toHaveLength(1)
+  })
+
+  it('3 applyDuringBatch calls within batch → exactly 1 IMMEDIATELY after endAiBatch', () => {
+    const updateScene = vi.fn()
+    const o = makeOrchestrator({ excalidrawAPI: { updateScene } })
+
+    const token = o.beginAiBatch()
+    o.applyDuringBatch([{ id: 'a', type: 'rectangle' }])
+    o.applyDuringBatch([
+      { id: 'a', type: 'rectangle' },
+      { id: 'b', type: 'ellipse' },
+    ])
+    o.applyDuringBatch([
+      { id: 'a', type: 'rectangle' },
+      { id: 'b', type: 'ellipse' },
+      { id: 'c', type: 'arrow' },
+    ])
+    o.endAiBatch(token)
+
+    const captures = updateScene.mock.calls.map(
+      (args) => (args[0] as { captureUpdate: string }).captureUpdate,
+    )
+    expect(captures.filter((v) => v === 'NEVER')).toHaveLength(3)
+    expect(captures.filter((v) => v === 'IMMEDIATELY')).toHaveLength(1)
+    // Final IMMEDIATELY carries 3 elements (the last good state).
+    const last = updateScene.mock.calls.at(-1)![0] as {
+      elements: Array<{ id: string }>
+    }
+    expect(last.elements.map((e) => e.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('nested beginAiBatch returns the existing token (single-level batching)', () => {
+    const updateScene = vi.fn()
+    const o = makeOrchestrator({ excalidrawAPI: { updateScene } })
+
+    const t1 = o.beginAiBatch()
+    const t2 = o.beginAiBatch()
+    expect(t2).toBe(t1)
+    o.endAiBatch(t1)
+    expect(updateScene.mock.calls).toHaveLength(1)
+  })
+
+  it('endAiBatch with mismatched token leaves batch open (recoverable)', () => {
+    const updateScene = vi.fn()
+    const o = makeOrchestrator({ excalidrawAPI: { updateScene } })
+
+    const real = o.beginAiBatch()
+    const wrong = Symbol('wrong') as unknown as BatchToken
+    o.endAiBatch(wrong) // no-op
+    expect(updateScene).not.toHaveBeenCalled()
+
+    // Real token still works.
+    o.endAiBatch(real)
+    expect(updateScene).toHaveBeenCalledTimes(1)
+    expect(
+      (updateScene.mock.calls[0][0] as { captureUpdate: string }).captureUpdate,
+    ).toBe('IMMEDIATELY')
+  })
+
+  it('forceEndBatch drains an in-flight batch (zombie recovery)', () => {
+    const updateScene = vi.fn()
+    const o = makeOrchestrator({ excalidrawAPI: { updateScene } })
+
+    o.beginAiBatch()
+    o.applyDuringBatch([{ id: 'z', type: 'rectangle' }])
+    o.forceEndBatch()
+
+    const captures = updateScene.mock.calls.map(
+      (args) => (args[0] as { captureUpdate: string }).captureUpdate,
+    )
+    expect(captures.filter((v) => v === 'IMMEDIATELY')).toHaveLength(1)
+    // After force-end, a fresh begin is allowed.
+    const freshToken = o.beginAiBatch()
+    expect(typeof freshToken).toBe('symbol')
+  })
+
+  it('fail-closed: beginAiBatch / endAiBatch are safe no-ops without excalidrawAPI', () => {
+    const o = makeOrchestrator() // no excalidrawAPI
+    const token = o.beginAiBatch()
+    expect(typeof token).toBe('symbol')
+    expect(() => o.applyDuringBatch([{ id: 'a', type: 'rectangle' }])).not.toThrow()
+    expect(() => o.endAiBatch(token)).not.toThrow()
+  })
+
+  it('applyDuringBatch and forceEndBatch are instance arrows (NOT on prototype)', () => {
+    const o = makeOrchestrator()
+    const proto = Object.getPrototypeOf(o) as object
+    const protoNames = Object.getOwnPropertyNames(proto)
+    // Must NOT pollute prototype — keeps the 11-method reflection invariant.
+    expect(protoNames).not.toContain('applyDuringBatch')
+    expect(protoNames).not.toContain('forceEndBatch')
+    // But MUST exist on the instance.
+    expect(typeof o.applyDuringBatch).toBe('function')
+    expect(typeof o.forceEndBatch).toBe('function')
   })
 })
 

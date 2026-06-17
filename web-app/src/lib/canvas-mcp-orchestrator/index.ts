@@ -85,6 +85,11 @@ import {
 } from './dispatch'
 import { createIdTranslator, type IdTranslator } from './id-translation'
 import { translateMcpToolResult } from './result-translator'
+import {
+  createBatchController,
+  type BatchController,
+  type ExcalidrawApiLike,
+} from './batch'
 
 // ---------------------------------------------------------------------------
 // Telemetry sink (skeleton stub)
@@ -210,6 +215,18 @@ export type CanvasMcpOrchestratorDeps = {
    * Wired in T16.
    */
   generateId?: () => string
+  /**
+   * Excalidraw imperative API handle. Wired in T17 for AI-batch undo
+   * grouping (`beginAiBatch` / `endAiBatch` / `applyDuringBatch` /
+   * `forceEndBatch`).
+   *
+   * Typed as `unknown` here to preserve the orchestrator's "no Excalidraw
+   * imports at module load" invariant — the batch controller narrows it
+   * structurally to `ExcalidrawApiLike` at the call site. When omitted,
+   * batch operations are fail-closed no-ops + log + emit telemetry
+   * (consistent with the T15 missing-gate semantics).
+   */
+  excalidrawAPI?: unknown
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +262,23 @@ function defaultGenerateId(): string {
   return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex
     .slice(6, 8)
     .join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`
+}
+
+// ---------------------------------------------------------------------------
+// Default batch-token factory (T17)
+// ---------------------------------------------------------------------------
+
+/**
+ * Allocate a fresh `BatchToken`. We use a unique JS `Symbol` so two
+ * concurrent orchestrator instances cannot accidentally collide on a
+ * uuid-shaped string token, and so the token stays opaque per the
+ * `__brand` declaration above.
+ *
+ * The cast is the documented escape hatch for branded types — the brand
+ * carries no runtime representation.
+ */
+function createBatchToken(): BatchToken {
+  return Symbol('CanvasMcpBatchToken') as unknown as BatchToken
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +337,16 @@ export class CanvasMcpOrchestrator {
    * idempotency miss-path; T22 may add an explicit `resetSession()`).
    */
   protected readonly idTranslator: IdTranslator
+  /**
+   * AI-batch undo-grouping controller (T17). Owns the begin/apply/end
+   * lifecycle that collapses N MCP tool calls into a single Excalidraw
+   * history entry via `captureUpdate` (`NEVER` × N → `IMMEDIATELY`).
+   *
+   * Single instance per orchestrator. The controller closes over the
+   * (optional) `excalidrawAPI`; when absent, all batch ops are
+   * fail-closed no-ops + warn (see `./batch.ts`).
+   */
+  protected readonly batch: BatchController
 
   constructor(deps: CanvasMcpOrchestratorDeps) {
     this.deps = deps
@@ -310,6 +354,14 @@ export class CanvasMcpOrchestrator {
     this.threadId = deps.threadId
     this.idTranslator = createIdTranslator({
       generateId: deps.generateId ?? defaultGenerateId,
+    })
+    this.batch = createBatchController({
+      // `unknown` at the deps slot, structurally narrowed here. Preserves
+      // the no-Excalidraw-import-at-load invariant (the cast is type-only).
+      excalidrawAPI: deps.excalidrawAPI as ExcalidrawApiLike | undefined,
+      logger: deps.logger,
+      telemetry: this.telemetry,
+      generateBatchToken: createBatchToken,
     })
 
     // Self-check (plan §1465): every key in the responsibility registry MUST
@@ -458,27 +510,61 @@ export class CanvasMcpOrchestrator {
   }
 
   // -------------------------------------------------------------------------
-  // 5. beginAiBatch — T17
+  // 5. beginAiBatch — T17 (wired)
   // -------------------------------------------------------------------------
   /**
    * Start an undo-grouping batch. Returns a `BatchToken` that must be
-   * passed to `endAiBatch`. Implementation lands in T17.
+   * passed to `endAiBatch`. Nested calls return the existing token + warn
+   * (single-level batching only — plan §1747).
+   *
+   * Delegates to the pure helper in `./batch.ts` so the lifecycle stays
+   * testable in isolation. The `excalidrawAPI` is injected via
+   * `deps.excalidrawAPI`; when omitted, batch operations are fail-closed
+   * no-ops + log + emit telemetry.
    */
   beginAiBatch(): BatchToken {
-    throw todo('beginAiBatch', 'T17', 1733)
+    return this.batch.begin()
   }
 
   // -------------------------------------------------------------------------
-  // 6. endAiBatch — T17
+  // 6. endAiBatch — T17 (wired)
   // -------------------------------------------------------------------------
   /**
    * Commit one history entry via Excalidraw `captureUpdate` for the batch
-   * opened by `beginAiBatch`. Implementation lands in T17.
+   * opened by `beginAiBatch`. Calls `updateScene({ ...,
+   * captureUpdate: 'IMMEDIATELY' })` with the last known good
+   * element-set. Mismatched / unknown / no-batch tokens are no-op + warn.
+   *
+   * Delegates to the pure helper in `./batch.ts`.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  endAiBatch(_token: BatchToken): void {
-    throw todo('endAiBatch', 'T17', 1733)
+  endAiBatch(token: BatchToken): void {
+    this.batch.end(token)
   }
+
+  /**
+   * Apply intermediate elements during an in-flight batch. Calls
+   * `updateScene` with `captureUpdate: 'NEVER'` so Excalidraw advances
+   * its snapshot WITHOUT emitting a history entry. The next `endAiBatch`
+   * collapses these into one undo step.
+   *
+   * Defined as an instance arrow (not a prototype method) so it does NOT
+   * pollute the prototype and break the "exactly the 11 responsibility
+   * methods" reflection test in `index.test.ts` — same pattern as
+   * `setThreadId` / `reverseTranslateElementId` / `registerUserElement`.
+   */
+  applyDuringBatch: (elements: ExcalidrawElement[]) => void = (elements) =>
+    this.batch.applyDuringBatch(elements)
+
+  /**
+   * Emergency drain. Commits the in-flight batch with the last known good
+   * element-set (always reaches IMMEDIATELY); safe no-op when idle.
+   * Used by the orchestrator-owner when an AI session aborts (process
+   * crash, unmount, user cancel) before `endAiBatch` was reached.
+   *
+   * Defined as an instance arrow for the same reason as
+   * `applyDuringBatch` above — keeps the 11-method reflection test happy.
+   */
+  forceEndBatch: () => void = () => this.batch.forceEnd()
 
   // -------------------------------------------------------------------------
   // 7. handleProcessCrash — T14

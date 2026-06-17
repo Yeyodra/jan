@@ -1,0 +1,34 @@
+{
+  "scenario": "3 mutations within AI batch ΓåÆ 1 history entry",
+  "intermediate_NEVER_count": 3,
+  "final_IMMEDIATELY_count": 1,
+  "total_updateScene_calls": 4,
+  "capture_sequence": [
+    "NEVER",
+    "NEVER",
+    "NEVER",
+    "IMMEDIATELY"
+  ],
+  "final_committed_elements": [
+    {
+      "id": "a",
+      "type": "rectangle"
+    },
+    {
+      "id": "b",
+      "type": "ellipse"
+    },
+    {
+      "id": "c",
+      "type": "arrow"
+    }
+  ],
+  "nested_begin_returned_existing_token": true,
+  "warnings_emitted": [
+    "canvas-mcp-orchestrator: nested beginAiBatch rejected; returning existing token"
+  ],
+  "telemetry_counters": [
+    "batch.nested_begin"
+  ],
+  "expected_undo_steps": 1
+}

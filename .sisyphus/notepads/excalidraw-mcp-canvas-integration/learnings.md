@@ -525,3 +525,82 @@ This is the minimum surface the orchestrator needs (id is mandatory; everything 
 The bi-map design uses `mcp_` as an internal forward-key prefix. Callers see clean (un-prefixed) ids in both directions. The collision-avoidance test in plan §1666 was satisfied by storing user-registered ids WITHOUT the prefix and MCP-allocated ids WITH the prefix — same canvas-store-id namespace, different forward-key namespace.
 
 **Key design tension uncovered:** `registerUserElement(z)` makes Z reverse-translatable as identity but does NOT short-circuit `translateMcpToCanvas('z')` — that still allocates a fresh canvas id. The "LLM can reference user-created elements" goal is solved by `syncStateFromCanvas` separately registering pre-existing canvas elements as ALSO MCP-issued (because the sync pushes them to mcp_excalidraw which then knows about them under the same id). T16 doesn't need to special-case it.
+
+
+## T17 - Undo grouping via captureUpdate (AI batch = 1 step)
+
+### Implementation summary
+
+New file `web-app/src/lib/canvas-mcp-orchestrator/batch.ts` exposing `createBatchController(deps)` -> `{ begin, end, applyDuringBatch, forceEnd, isInBatch }`. Wired into `CanvasMcpOrchestrator` via:
+
+- `beginAiBatch()` -> prototype method delegating to `this.batch.begin()`
+- `endAiBatch(token)` -> prototype method delegating to `this.batch.end(token)`
+- `applyDuringBatch(elements)` -> instance arrow (off-prototype)
+- `forceEndBatch()` -> instance arrow (off-prototype)
+
+Wave 4 status after T17: 178 tests pass (was 159 after T16, +19 net).
+
+### Confirmed: `excalidrawAPI.updateScene` signature in this codebase
+
+The actual `excalidrawAPI` is greenfield as of T17 - exhaustive grep across `web-app/src` showed ZERO real `updateScene` call sites prior to this task. The only mentions were JSDoc/comments in `CanvasEditor.tsx`, `types/canvas.ts`, and `canvas-store.ts`. So T17 implementation is the first runtime caller; the contract was anchored to the spike (T3) and the upstream `SceneData` type:
+
+```ts
+type SceneData = {
+  elements?: ImportedDataState['elements']
+  appState?: ImportedDataState['appState']
+  collaborators?: Map<SocketId, Collaborator>
+  captureUpdate?: CaptureUpdateActionType  // 'IMMEDIATELY' | 'NEVER' | 'EVENTUALLY'
+}
+```
+
+We narrow this structurally to a single mandatory shape `{ elements: ExcalidrawElementLike[]; captureUpdate: CaptureUpdateValue }`. T18+ can pass through `appState` if needed; the wider SceneData stays at the boundary cast site (CanvasEditor wiring task).
+
+### Local enum mirror (CAPTURE_UPDATE)
+
+To preserve the "no `@excalidraw/excalidraw` at module load" invariant, `batch.ts` exports its own:
+
+```ts
+export const CAPTURE_UPDATE = {
+  IMMEDIATELY: 'IMMEDIATELY',
+  NEVER: 'NEVER',
+  EVENTUALLY: 'EVENTUALLY',
+} as const
+```
+
+This is a documented duplication. The wire values are stable upstream (per T3 spike). If they ever drift, the runtime call to `excalidrawAPI.updateScene` will surface a clear error from Excalidraw's own validation.
+
+### BatchToken: symbol vs uuid
+
+The type was already declared as `symbol & { __brand: 'CanvasMcpBatchToken' }` in T13. Stuck with symbol over uuid for two reasons:
+1. Two concurrent orchestrator instances cannot collide on a uuid-shaped string token (vanishingly unlikely but technically possible). Symbols are guaranteed-unique by JS spec.
+2. The brand is opaque; callers cannot inspect or fake the token easily.
+
+The `as unknown as BatchToken` cast is the standard escape hatch for branded types.
+
+### Zombie recovery semantics
+
+The plan explicitly required: "if any tool call in the batch errors, still call `endAiBatch` with last known good state (don't leave orchestrator in zombie batch mode)".
+
+Implementation: `applyDuringBatch` wraps `excalidrawAPI.updateScene` in try/catch. On throw:
+- Logs warning + telemetry (`batch.apply_error`)
+- Does NOT clear `activeToken` (batch stays in flight)
+- `lastKnownGoodState` is ONLY updated on a SUCCESSFUL paint, so the recovery snapshot is never corrupted by a failed write.
+
+Then `endAiBatch(token)` always reaches the `IMMEDIATELY` commit, even if every interior `applyDuringBatch` threw. The IMMEDIATELY commit itself is also try/catch'd (`batch.commit_error` counter) so a final commit-time failure cannot leave us in zombie state - `reset()` runs BEFORE the commit attempt.
+
+Evidence: `.sisyphus/evidence/task-17-zombie-recovery.txt` shows the full trace of a failed-mid-batch run that still commits cleanly with the last good state.
+
+### Instance-arrow pattern for non-canonical methods
+
+T15 established the pattern (for `setThreadId`); T16 used it for `reverseTranslateElementId` + `registerUserElement`. T17 follows the same pattern for `applyDuringBatch` and `forceEndBatch`:
+
+```ts
+applyDuringBatch: (elements: ExcalidrawElement[]) => void = (elements) =>
+  this.batch.applyDuringBatch(elements)
+```
+
+Reason: keeps the prototype's own-property list at exactly the 11 canonical responsibility methods. The reflection self-check at construction time iterates `OrchestratorResponsibility` keys (the canonical 11), and the structural test in `index.test.ts` asserts `Object.getOwnPropertyNames(proto).filter(...)` equals the 11. Any new prototype method would break both checks.
+
+### Test runner gotcha
+
+`bun test` runs vitest specs but doesn't pick up vitest's `vi` mock from the same import surface as `npx vitest`. Both runners pass on this PC after T17, but CI should keep using `bun typecheck` + `npx vitest run` (the `test` script in package.json).
