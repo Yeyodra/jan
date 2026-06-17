@@ -1823,7 +1823,7 @@ Max Concurrent: 5 (Wave 4)
 
 ### Wave 5 — UI Integration
 
-- [ ] 18. CanvasPromptBar component
+- [x] 18. CanvasPromptBar component
 
   **What to do**:
   - Create `web-app/src/components/canvas/CanvasPromptBar.tsx`
@@ -2005,7 +2005,7 @@ Max Concurrent: 5 (Wave 4)
   - Files: `web-app/src/components/canvas/CanvasAiIndicator.tsx`, `CanvasAiIndicator.test.tsx`
   - Pre-commit: `cd web-app && bun typecheck && bun test src/components/canvas/CanvasAiIndicator`
 
-- [ ] 20. Wire prompt bar + indicator into /canvas/$canvasId route
+- [x] 20. Wire prompt bar + indicator into /canvas/$canvasId route
 
   **What to do**:
   - Edit `web-app/src/routes/canvas/$canvasId.tsx`:

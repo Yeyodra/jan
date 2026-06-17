@@ -656,3 +656,66 @@ Reason: keeps the prototype's own-property list at exactly the 11 canonical resp
 
 ### Decoupling
 - CanvasPromptBar imports zero runtime modules from `@/lib/canvas-mcp-orchestrator/`. Parent (T20) wires `beginAiBatch` / `endAiBatch` and translates `OrchestratorState !== 'idle'` to `isSubmitting`. This keeps the unit test trivial — no orchestrator mocking needed.
+
+
+## Wave 5 / T22 -- Manual edit lock finalization (2026-06-17)
+
+- Lock controller (`web-app/src/lib/canvas-mcp-orchestrator/lock.ts`) follows the project DI factory pattern: `createLockController(deps?): LockController` with closure state and optional logger -- NO React/zustand/Excalidraw imports at module load (verified by `lock.test.ts` module-hygiene test at line 244).
+- RefCount semantics: `lock()` returns an `unlockFn` that is idempotent (cannot double-decrement) and refCount is clamped at zero, so spurious `unlock()` calls cannot drive it negative -- see `lock.test.ts` "idempotent unlock" describe block.
+- Zombie-batch recovery: `forceUnlock()` resets refCount to 0 and notifies observers exactly once; previously-issued unlockFns are inert afterwards. The orchestrator's `endAiBatch` calls `lock.forceUnlock()` unconditionally so a thrown/errored batch cannot leave a stuck lock (`index.test.ts` line 731).
+- Wiring: `index.ts` exposes `lockManualEdits`, `isManualEditLocked`, `subscribeManualEditLock` as instance arrows (NOT on prototype) to preserve the 11-method reflection invariant (`index.test.ts` line 756).
+- Banner (`CanvasManualEditLockBanner.tsx`) uses `role=status` + `aria-live=polite` and `pointer-events: none` so it announces the lock state without blocking canvas interactions -- consistent with T19 `CanvasAiIndicator` styling.
+- Evidence captured: `.sisyphus/evidence/task-22-error-unlock.txt` (67/67 vitest pass across lock + index + banner suites). Screenshots task-22-lock-active.png / task-22-lock-released.png deferred to T20 manual-QA.
+- Commit: `ceb56076c feat(orchestrator): manual edit lock during AI batch` -- 8 files, 957 insertions.
+
+---
+
+## T20 — Wire prompt bar + indicator into /canvas/$canvasId route
+
+**Date**: 2026-06-17
+
+### Decisions
+
+- **FSM-in-route pattern**: The orchestrator class deliberately does NOT
+  expose `OrchestratorState` as observable internal state. The route owns
+  the React state cursor (`useState<OrchestratorState>('idle')`) and walks
+  the machine manually around `beginAiBatch` / `endAiBatch`. This keeps
+  the orchestrator side-effect-free and avoids forcing every consumer to
+  subscribe to a state stream.
+
+- **Per-canvas orchestrator instance**: `useMemo` keyed on `canvas.id` so
+  each canvas gets a fresh orchestrator. The CanvasDetail component is
+  already remounted with `key={canvas.id}` from the parent, so the memo
+  key only matters for the hot-reload edge case.
+
+- **Mount layout**: Wrapped the canvas viewport in `<div className="relative
+  flex-1 min-h-0">` so the indicator + lock banner can absolute-position
+  themselves. Prompt bar lives OUTSIDE this wrapper as a sibling at the
+  bottom of the flex column — it does not need to overlay the canvas.
+
+- **Deferred LLM wiring**: Per plan T20 scope, the submit handler walks the
+  FSM (`spawning → drawing → idle`) and exercises `beginAiBatch` /
+  `lockManualEdits` / `endAiBatch` but does NOT yet dispatch to an LLM.
+  Marked with a `TODO(plan)` referencing the follow-up task that owns
+  end-to-end LLM integration.
+
+- **CanvasEditor.viewModeEnabled** added as an optional prop (default
+  `false`). Existing call sites and tests untouched — the prop only fires
+  when the route lock controller toggles `isManualEditLocked`.
+
+### Test patterns
+
+- **Mocking the orchestrator constructor**: `vi.mock` with a recording
+  `vi.fn().mockImplementation(...)` returning a pojo with the methods the
+  route calls (`isManualEditLocked`, `subscribeManualEditLock`,
+  `beginAiBatch`, `endAiBatch`, `lockManualEdits`). This bypasses
+  the real class's 11-method self-check + ctor side effects.
+
+- **`createFileRoute` mock**: Returning the config object verbatim
+  (`createFileRoute: () => (config) => config`) lets the test pull
+  `Route.component` directly. Cleaner than trying to mount the real
+  Tanstack router inside vitest.
+
+- **Module-scope mock state + `beforeEach` reset**: Because `vi.mock`
+  factories are hoisted above imports, they MUST close over module-scope
+  `let` bindings. Per-test `it` blocks mutate those before render.

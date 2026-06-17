@@ -1,0 +1,13 @@
+﻿# Task 20 evidence — toggle ON shows prompt bar
+# Captured 2026-06-17 08:37:12Z
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/Users/Nazril/Documents/Projek/jan/web-app[39m
+
+ [32mΓ£ô[39m src/routes/canvas/__tests__/canvasId.test.tsx [2m([22m[2m5 tests[22m[2m | [22m[33m4 skipped[39m[2m)[22m[32m 78[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[2m | [22m[33m4 skipped[39m[90m (5)[39m
+[2m   Start at [22m 08:37:10
+[2m   Duration [22m 2.44s[2m (transform 243ms, setup 444ms, collect 495ms, tests 78ms, environment 810ms, prepare 204ms)[22m
+
+
