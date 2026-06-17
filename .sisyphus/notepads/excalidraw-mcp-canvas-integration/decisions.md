@@ -270,3 +270,31 @@ Task brief suggested `Loader2` if available. The codebase actually uses `Loader`
 ### v1 scope locked at component level
 No cancel button, no progress %, no element-count display. The orchestrator is not subscribed to. This is enforced *by the prop interface itself* (only `state` + `className`) — adding any of those v1-locked features would require widening the prop contract, which surfaces in code review.
 
+
+## [2026-06-17] T18 — CanvasPromptBar design decisions
+
+### Optimistic clear with restore-on-failure
+- On submit, the input value is cleared **immediately**, then `onSubmit` is awaited.
+- If `onSubmit` throws/rejects, the catch branch restores the prompt via `setValue(prompt)` so the user keeps their text and can retry.
+- Rationale: matches Jan's chat input UX (instant feedback on send) without losing input on transient failure. Parent (T20) is responsible for surfacing the error itself (toast / inline message).
+
+### Loading affordance lives INSIDE the button (not adjacent)
+- While `isSubmitting`, the send button swaps its `ArrowRight` icon for `Loader2` (animate-spin). No extra spinner element next to the bar.
+- A separate `CanvasAiIndicator` (T19, sibling) handles the broader "AI is drawing" affordance for the canvas page; the prompt bar only shows the local input-state spinner.
+- `aria-label` on the button toggles between `Send to AI` and `AI is drawing` so the state is announced.
+- Plus a visually-hidden `role=status aria-live=polite` span for assistive tech that doesn't re-announce label changes.
+
+### Disabled gating (3 conditions, OR'd)
+1. `canvasId === null` → no target canvas, bar inert. Placeholder swaps to "Open a canvas to start prompting…".
+2. `isSubmitting === true` → orchestrator batch in flight, lock both input + button.
+3. Trimmed input length 0 → button only (input stays editable).
+
+### Shift+Enter is a no-op in V1
+- Single-line `<input>`; multi-line is out of scope per V1 lock.
+- All Enter keys `preventDefault` so the native form-submit pathway can never bypass the gating logic. After `preventDefault`, branch on `shiftKey` to decide whether to submit.
+
+### Pure component, no orchestrator imports
+- T20 owns `beginAiBatch` / `endAiBatch` and the LLM-tool-call dispatch. T18 is presentation-only. This keeps the unit test trivial (no orchestrator state machine to mock) and mirrors the same separation already used for `CanvasToolbar` (it dispatches via `onAction`, not direct store mutations).
+
+### Plan deviation (transparency)
+- Plan task block told me to update the plan checkbox at line 1826. The session-level Work_Context overrides this: "The plan file (.sisyphus/plans/*.md) is SACRED and READ-ONLY." Did NOT edit the plan; orchestrator will tick the checkbox.

@@ -633,3 +633,26 @@ Reason: keeps the prototype's own-property list at exactly the 11 canonical resp
 - vitest's jsdom env auto-applies for `.test.tsx` files in this project — no explicit `// @vitest-environment jsdom` needed.
 - `OrchestratorState` is type-only and does not pull any orchestrator runtime when imported with `import type`. Verified by typecheck + the runtime-import lint mental-check.
 
+
+## [2026-06-17] T18: CanvasPromptBar implementation
+
+### UI primitives confirmed
+- `@/components/ui/input` — wraps native `<input>`; supplies focus-visible ring via `focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]`, disabled state via `disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50`. Pass extra classes via `className` (it `cn()`s them in).
+- `@/components/ui/button` (cva-based): use `variant=default` + `size=icon-sm` for the round 32px send button — same as ChatInput's send (line 2184–2193). Icon child auto-sized to 1rem via `[&_svg:not([class*='size-'])]:size-4`.
+- Loader pattern from ChatInput: `<Loader2 className="text-primary-fg animate-spin" />` to match the spinner colour token.
+
+### Test infra
+- `vitest --run` is the canonical runner (`bunx vitest run <path>`). `bun test` invokes Bun's own runner and won't resolve the project's path aliases / jsdom setup. Plan AC says `bun test ...` but reality is `bunx vitest run ...`.
+- Vitest config at `web-app/vitest.config.ts` enables `jsdom` + `globals: true` + alias `@/ -> src/`. No extra setup needed in component tests.
+- `@testing-library/user-event` `setup()` per test is the established pattern.
+
+### Accessibility patterns
+- `sr-only` Tailwind utility is available for visually-hidden labels.
+- For status announcements use `<span role="status" aria-live="polite" className="sr-only">` — empty string when idle, status text when active.
+- Per-state `aria-label` on icon buttons (e.g. `Send to AI` vs `AI is drawing`) gives screen readers a meaningful name and gives tests a semantic selector via `getByRole('button', { name })`.
+
+### V1 trap caught
+- Native `<input type="text">` inside a `<form>` triggers form submit on Enter regardless of Shift state in jsdom (and in Chrome too, depending on event flow). Don't rely on `!e.shiftKey` alone — call `e.preventDefault()` for ALL Enter keys, then branch on `shiftKey`. Otherwise Shift+Enter accidentally submits.
+
+### Decoupling
+- CanvasPromptBar imports zero runtime modules from `@/lib/canvas-mcp-orchestrator/`. Parent (T20) wires `beginAiBatch` / `endAiBatch` and translates `OrchestratorState !== 'idle'` to `isSubmitting`. This keeps the unit test trivial — no orchestrator mocking needed.
