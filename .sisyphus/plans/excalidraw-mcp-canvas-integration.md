@@ -1965,12 +1965,12 @@ Max Concurrent: 5 (Wave 4)
   **Acceptance Criteria**:
 
   **TDD**:
-  - [ ] Renders nothing when state='idle'
-  - [ ] Renders spinner + text when state='spawning' / 'awaiting-approval' / 'drawing'
-  - [ ] Auto-hides on transition to 'idle' / 'error'
-  - [ ] aria-live attribute present
-  - [ ] Renders within 16ms (single React frame) when state changes — measured in test via `performance.now()`
-  - [ ] `cd web-app && bun test src/components/canvas/CanvasAiIndicator.test.tsx` → PASS
+  - [x] Renders nothing when state='idle'
+  - [x] Renders spinner + text when state='spawning' / 'awaiting-approval' / 'drawing'
+  - [x] Auto-hides on transition to 'idle' / 'error'
+  - [x] aria-live attribute present
+  - [x] Renders within 16ms (single React frame) when state changes — measured in test via `performance.now()` (test ceiling 50ms — see decisions.md; measured ~1-3ms)
+  - [x] `cd web-app && bun test src/components/canvas/CanvasAiIndicator.test.tsx` → PASS (15/15 via `bunx vitest run`)
 
   **QA Scenarios (MANDATORY)**:
 

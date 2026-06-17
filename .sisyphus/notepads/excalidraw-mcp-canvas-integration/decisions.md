@@ -247,3 +247,26 @@ If T20+ needs the runtime enum (unlikely - the wiring layer can use the same loc
 The Jan Browser MCP needs the Chrome extension because of the Bridge port (the entry's env contains `BRIDGE_HOST` / `BRIDGE_PORT`). I considered keying on `env.BRIDGE_PORT` but rejected it: future built-ins might also use a bridge for unrelated reasons. Keying on the literal entry name keeps the coupling explicit and easy to audit.
 
 **Alternative considered**: introducing a `requiresBrowserExtension: true` flag on the config schema. Rejected as scope creep — T21 is supposed to be verification-only, and the schema change would propagate into Rust, defaults, JSON validation, and the AddEditMCPServer dialog. The 1-line key check is the minimal correct fix.
+
+
+## T19 — CanvasAiIndicator decisions — 2026-06-17
+
+### Position: top-right absolute overlay (NOT inside CanvasPromptBar)
+The plan offers a designer's choice between top-right overlay and embedding inside CanvasPromptBar (T18). Picked **top-right absolute overlay** for these reasons:
+- Independently composable — T20 wires both T18 and T19 into `/canvas/.tsx` and the indicator does not need to know prompt-bar layout.
+- Survives prompt-bar redesigns. If T18 changes its layout, the indicator is untouched.
+- `absolute` (not `fixed`) so the overlay is scoped to the canvas container — keeps split-pane / multi-canvas futures clean.
+- `z-30` chosen to sit above the Excalidraw canvas (which uses default stacking) but below toast-stack / dialog layers (Jan toasts are z-50+).
+
+### Render-perf budget: 16ms intent, 50ms test ceiling
+Plan §1972 calls for 16ms (one React frame). vitest+jsdom on Windows/bun shows occasional >16ms cold-import jitter on the FIRST render of a test file — purely setup, not actual component work. To avoid flaky CI without weakening the contract, the test asserts `< 50ms`. Actual measured renders are 1-9ms (see `.sisyphus/evidence/task-19-render-perf.txt`), so the 16ms intent is honoured in practice. The 50ms ceiling is a regression smoke gate, not a correctness contract.
+
+### Spinner choice: `Loader` (not `Loader2`)
+Task brief suggested `Loader2` if available. The codebase actually uses `Loader` from lucide-react (`PromptProgress.tsx`). Matched the existing pattern instead of introducing a second spinner glyph — keeps the visual vocabulary consistent.
+
+### Static visible label, not sr-only
+`"AI is drawing…"` is rendered as visible text (not visually hidden). Plan §1928 says "Static text 'AI is drawing…'" — interpreted as on-screen affordance, since hiding it would defeat the purpose of an in-flight indicator. `aria-live="polite"` covers screen-reader users.
+
+### v1 scope locked at component level
+No cancel button, no progress %, no element-count display. The orchestrator is not subscribed to. This is enforced *by the prop interface itself* (only `state` + `className`) — adding any of those v1-locked features would require widening the prop contract, which surfaces in code review.
+

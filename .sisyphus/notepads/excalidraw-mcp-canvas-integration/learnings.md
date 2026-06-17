@@ -622,3 +622,14 @@ Reason: keeps the prototype's own-property list at exactly the 11 canonical resp
 **Pattern for future built-in entries**: just add to `DEFAULT_MCP_CONFIG` with `official: true, active: false`. The "Official" badge appears for free; if your entry needs server-specific UX (like the Jan Browser MCP install link), gate it on `key === 'YourServerName'`, not on `config.official`.
 
 **Test infrastructure quirk**: `bun test` fails on this codebase because the i18n setup uses Vite-only `import.meta.glob`. Run via `bun run test -- <path>` (which proxies to `vitest --run`) instead.
+
+
+## T19 — CanvasAiIndicator (Wave 5) — 2026-06-17
+
+- `Loader` (NOT `Loader2`) is the lucide-react spinner already in use. See `web-app/src/components/PromptProgress.tsx` line 35 — pattern is `<Loader className="animate-spin w-4 h-4" />`. Followed the same idiom in CanvasAiIndicator (used `size-3.5` to match a smaller pill).
+- `cn()` helper lives at `@/lib/utils` and is the canonical class-merge across the canvas components (`CanvasToolbar.tsx` lines 59 / 177 / 209 / 238).
+- Test runner: the workspace `test` script is `vitest --run` (see `web-app/package.json`). The plan text says `bun test`, but `bun test` runs Bun's native test runner which does NOT provide a jsdom `document`. Use `bunx vitest run <path>` instead. Documented for future Wave 5/6 tasks.
+- `__tests__/` subdirectory is the convention for canvas component tests, but flat `ComponentName.test.tsx` next to the source is also accepted (`CanvasCard.test.tsx` / `CanvasToolbar.test.tsx`). I placed the new test file flat to mirror the closest siblings.
+- vitest's jsdom env auto-applies for `.test.tsx` files in this project — no explicit `// @vitest-environment jsdom` needed.
+- `OrchestratorState` is type-only and does not pull any orchestrator runtime when imported with `import type`. Verified by typecheck + the runtime-import lint mental-check.
+
