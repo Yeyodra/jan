@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useEffect } from 'react'
 import { useChat } from '@/hooks/use-chat'
 import { getExcalidrawCuratedToolDefinitions } from '@/lib/canvas-mcp-orchestrator/curated-tools'
 import type { McpToolCall } from '@/lib/canvas-mcp-orchestrator/types'
@@ -29,11 +29,17 @@ export type UseCanvasChatOptions = {
   onFinish?: () => void
 }
 
+/** Shape accepted by the AI SDK's addToolOutput */
+export type ToolOutput =
+  | { state: 'output'; tool: string; toolCallId: string; output: string }
+  | { state: 'output-error'; tool: string; toolCallId: string; errorText: string }
+
 export type UseCanvasChatResult = {
   sendMessage: (prompt: string) => void
   stop: () => void
   status: CanvasChatStatus
   error: Error | null
+  addToolOutput: (output: ToolOutput) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -104,14 +110,40 @@ export function useCanvasChat(options: UseCanvasChatOptions): UseCanvasChatResul
     stop: chatStop,
     status: sdkStatus,
     error: sdkError,
+    setFixedTools,
+    addToolOutput: chatAddToolOutput,
   } = useChat({
     // canvas- prefix is critical — must not collide with chat thread session IDs
     sessionId: 'canvas-' + canvasId,
     systemMessage: CANVAS_SYSTEM_PROMPT,
+    onToolCall: ({ toolCall }) => {
+      console.log('[useCanvasChat] onToolCall from AI SDK:', toolCall)
+      // Convert AI SDK ToolCallUIPart shape { toolName, toolCallId, input }
+      // to our McpToolCall shape { name, arguments, toolCallId }
+      onToolCallRef.current?.({
+        name: toolCall.toolName,
+        arguments: (toolCall.input ?? {}) as Record<string, unknown>,
+        toolCallId: toolCall.toolCallId,
+      })
+    },
     onFinish: () => {
+      console.log('[useCanvasChat] onFinish from AI SDK fired')
       onFinishRef.current?.()
     },
   })
+
+  // Pin the curated mcp_excalidraw tool definitions on the transport once,
+  // right after mount. Without this the transport's refreshTools() would find
+  // no MCP service registered for the canvas session and return an empty tool
+  // map, so the LLM would receive no tool definitions and produce plain text.
+  useEffect(() => {
+    if (toolDefsRef.current) {
+      setFixedTools(toolDefsRef.current)
+    }
+    // setFixedTools is stable (useCallback with no deps); toolDefsRef is a ref.
+    // This effect must run exactly once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /**
    * Send a plain text prompt to the canvas LLM.
@@ -133,5 +165,6 @@ export function useCanvasChat(options: UseCanvasChatOptions): UseCanvasChatResul
     stop,
     status: mapStatus(sdkStatus),
     error: sdkError ?? null,
+    addToolOutput: chatAddToolOutput,
   }
 }

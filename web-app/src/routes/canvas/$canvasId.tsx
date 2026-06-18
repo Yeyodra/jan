@@ -53,13 +53,27 @@ import { CanvasRouteErrorComponent } from '@/components/canvas/CanvasErrorBounda
 import { CanvasPromptBar } from '@/components/canvas/CanvasPromptBar'
 import { CanvasAiIndicator } from '@/components/canvas/CanvasAiIndicator'
 import { CanvasManualEditLockBanner } from '@/components/canvas/CanvasManualEditLockBanner'
+import { CanvasErrorBanner } from '@/components/canvas/CanvasErrorBanner'
+import {
+  CanvasModelPicker,
+  type ModelInfo,
+} from '@/components/canvas/CanvasModelPicker'
 import { CanvasMcpOrchestrator } from '@/lib/canvas-mcp-orchestrator'
 import type {
   OrchestratorState,
   McpToolCall,
   McpToolResult,
 } from '@/lib/canvas-mcp-orchestrator/types'
+import { createBatchApprovalToken } from '@/lib/canvas-mcp-orchestrator/approval'
+import { applyMutationsToCanvas } from '@/lib/canvas-mcp-orchestrator/apply'
+import {
+  EXCALIDRAW_MUTATING_TOOLS,
+  EXCALIDRAW_READONLY_TOOLS,
+} from '@/lib/canvas-mcp-orchestrator/curated-tools'
+import { useCanvasChat, type ToolOutput } from '@/hooks/useCanvasChat'
+import { useToolApproval } from '@/hooks/useToolApproval'
 import { useServiceHub } from '@/hooks/useServiceHub'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import {
   downloadBlob,
   exportCanvasToJson,
@@ -168,11 +182,17 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
     apiRef.current = api
   }, [])
 
+  // Ref that mirrors the orchestrator's manual-edit lock state. Used by
+  // useCanvasAutoSave to skip debounced writes during a batch; flushOnce is
+  // called on lock release to persist exactly one save after the batch.
+  const isLockedRef = useRef<boolean>(false)
+
   // Auto-save: the hook owns the debounce + status machine. We pull `flush`
   // out for the Ctrl/Cmd+S manual-save shortcut so users can force a write
   // without waiting for the debounce window.
-  const { onChange, saveStatus, flush } = useCanvasAutoSave({
+  const { onChange, saveStatus, flush, flushOnce } = useCanvasAutoSave({
     canvasId: canvas.id,
+    isLockedRef,
     onSaveError: (err) => {
       // Translate the i18n key the lib layer uses to a real toast.
       toast.error(t('errors.saveFailed'), {
@@ -214,11 +234,32 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
   const serviceHub = useServiceHub()
   const mcpClient = useMemo(
     () => ({
-      callTool: (call: McpToolCall): Promise<McpToolResult> =>
-        serviceHub
+      callTool: (call: McpToolCall): Promise<McpToolResult> => {
+        // Sanitize arrow element fields: mcp_excalidraw Zod schema requires
+        // non-null strings for endArrowhead/startArrowhead. LLMs often emit
+        // null for these — replace with 'arrow' (the mcp_excalidraw default).
+        let args = call.arguments
+        if (
+          (call.name === 'batch_create_elements' || call.name === 'create_element') &&
+          args
+        ) {
+          const sanitizeEl = (el: Record<string, unknown>) => {
+            const out = { ...el }
+            if ('endArrowhead' in out && out.endArrowhead === null) out.endArrowhead = 'arrow'
+            if ('startArrowhead' in out && out.startArrowhead === null) out.startArrowhead = 'none'
+            return out
+          }
+          if (call.name === 'batch_create_elements' && Array.isArray(args.elements)) {
+            args = { ...args, elements: args.elements.map(sanitizeEl) }
+          } else if (call.name === 'create_element') {
+            args = sanitizeEl(args as Record<string, unknown>) as typeof args
+          }
+        }
+        return serviceHub
           .mcp()
-          .callTool({ toolName: call.name, arguments: call.arguments })
-          .then((result) => result as McpToolResult),
+          .callTool({ toolName: call.name, arguments: args })
+          .then((result) => result as McpToolResult)
+      },
     }),
     // serviceHub identity is stable (zustand singleton); safe to dep on it.
     [serviceHub],
@@ -287,57 +328,285 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
   useEffect(() => {
     // Sync once on mount in case lock state changed before subscription.
     setIsManualEditLocked(orchestrator.isManualEditLocked())
-    const unsubscribe = orchestrator.subscribeManualEditLock(() => {
+    const unsubscribe = orchestrator.subscribeManualEditLock((locked) => {
       setIsManualEditLocked(orchestrator.isManualEditLocked())
+      // Keep the ref in sync so useCanvasAutoSave can skip writes during batch.
+      isLockedRef.current = locked
+      // When the lock releases, flush the last pending scene exactly once.
+      if (!locked) flushOnce()
     })
     return () => {
       unsubscribe()
     }
+  }, [orchestrator, flushOnce])
+
+  // ---- AI dispatch state (T6) ---------------------------------------------
+
+  // Progress counter shown in CanvasAiIndicator: { current, total }.
+  const [progress, setProgress] = useState<{ current: number; total: number } | undefined>(
+    undefined,
+  )
+
+  // Last error seen during a batch — surfaces for T9 error banner.
+  const [lastBatchError, setLastBatchError] = useState<Error | null>(null)
+
+  // T9: structured error state for the banner — includes retryFromIndex so
+  // the retry handler knows which tool to resume from.
+  const [errorState, setErrorState] = useState<{
+    message: string
+    canRetry: boolean
+    retryFromIndex: number
+  } | null>(null)
+
+  // AbortController for the in-flight dispatch loop. Replaced on each new
+  // submit; handleStop aborts it to halt the loop mid-flight.
+  const toolCallAbortController = useRef<AbortController | null>(null)
+
+  // Deferred-collect buffer: tool calls streamed from the LLM are pushed
+  // here by onToolCall; the dispatch loop in onFinish drains it.
+  const sessionData = useRef<{ tools: McpToolCall[] }>({ tools: [] })
+
+  // Batch lifecycle refs — set by handlePromptSubmit, consumed by onFinish so
+  // the finally block always cleans up regardless of where the error occurs.
+  const batchTokenRef = useRef<ReturnType<typeof orchestrator.beginAiBatch> | null>(null)
+  const unlockRef = useRef<(() => void) | null>(null)
+
+  // ---- T11: selectedModel local state ------------------------------------
+  // Reads the global default once on mount; local state from then on.
+  // V1: no persistence — selection is reset when the route unmounts.
+  const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(
+    () => {
+      const global = useModelProvider.getState().selectedModel
+      if (!global) return null
+      // Map the global Model type to the local ModelInfo shape.
+      // useModelProvider.selectedModel has id, name; selectedProvider gives provider.
+      const provider = useModelProvider.getState().selectedProvider
+      return {
+        id: global.id,
+        name: (global as { displayName?: string; name?: string }).displayName
+          ?? (global as { name?: string }).name
+          ?? global.id,
+        provider,
+      }
+    }
+  )
+
+  // ---- useCanvasChat wiring (T2 → T6) ------------------------------------
+
+  // Stable ref for addToolOutput — populated after useCanvasChat returns.
+  // onToolCall is defined before useCanvasChat, so it captures this ref and
+  // calls through it once addToolOutput is available (same pattern as onToolCallRef).
+  const addToolOutputRef = useRef<((output: ToolOutput) => void) | null>(null)
+
+  // onToolCall: immediately dispatch each tool call as it arrives from the LLM,
+  // then feed the result back via addToolOutput so the LLM can continue to
+  // the next tool in the same streaming turn.
+  const onToolCall = useCallback(async (call: McpToolCall) => {
+    console.log('[CANVAS] onToolCall fired:', call)
+    // Keep a record for handleRetry (retry still iterates sessionData.tools).
+    sessionData.current.tools.push(call)
+
+    const signal = toolCallAbortController.current?.signal
+    if (signal?.aborted) return
+
+    const toolCallId = call.toolCallId ?? ''
+
+    try {
+      const result: McpToolResult = await orchestrator.dispatchToolCall(call)
+      console.log('[CANVAS] dispatchToolCall result for', call.name, ':', result)
+      await applyMutationsToCanvas(result, orchestrator, { signal })
+      console.log('[CANVAS] applyMutationsToCanvas done for', call.name)
+
+      // Feed result back to the LLM so it can continue the turn.
+      const outputText =
+        'content' in result
+          ? result.content.map((c) => c.text).join('\n')
+          : `Error: ${result.error}`
+      addToolOutputRef.current?.({
+        state: 'output',
+        tool: call.name,
+        toolCallId,
+        output: outputText,
+      })
+
+      setProgress((prev) => ({
+        current: (prev?.current ?? 0) + 1,
+        total: sessionData.current.tools.length,
+      }))
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      console.error('[CANVAS] dispatch error in onToolCall:', error.message, error)
+
+      addToolOutputRef.current?.({
+        state: 'output-error',
+        tool: call.name,
+        toolCallId,
+        errorText: error.message,
+      })
+
+      setOrchestratorState('error')
+      setLastBatchError(error)
+      setErrorState({
+        message: error.message,
+        canRetry: true,
+        retryFromIndex: sessionData.current.tools.length - 1,
+      })
+      toast.error(t('errors.aiPromptFailed', { defaultValue: 'AI prompt failed' }), {
+        description: error.message,
+      })
+    }
+  }, [orchestrator, t])
+
+  // onFinish: runs AFTER the LLM stream ends. All tool dispatches have already
+  // completed in onToolCall — this only handles batch lifecycle cleanup.
+  const onFinish = useCallback(() => {
+    console.log('[CANVAS] onFinish fired — cleaning up batch lifecycle')
+    const batchToken = batchTokenRef.current
+    const unlock = unlockRef.current
+
+    try { unlock?.() } catch { /* idempotent */ }
+    if (batchToken !== null) {
+      try { orchestrator.endAiBatch(batchToken) } catch { /* fail-closed */ }
+    }
+    orchestrator.clearBatchApproval()
+    setOrchestratorState((prev) => (prev === 'error' ? 'error' : 'idle'))
+    batchTokenRef.current = null
+    unlockRef.current = null
   }, [orchestrator])
 
-  // Submit handler — walks the FSM and drives the orchestrator's batch +
-  // lock. The actual LLM/MCP dispatch is intentionally stubbed for V1.
+  const { sendMessage, stop, addToolOutput } = useCanvasChat({
+    canvasId: canvas.id,
+    model: (selectedModel ?? { id: 'poolprox/auto', name: 'Auto' }) as never,
+    provider: selectedModel?.provider ?? 'auto',
+    onToolCall,
+    onFinish,
+  })
+  // Wire the stable ref so onToolCall can call addToolOutput without it being
+  // in the callback's dep array (addToolOutput is stable from useChatSDK).
+  addToolOutputRef.current = addToolOutput
+
+  // ---- Submit handler (T6) ------------------------------------------------
+
+  // handlePromptSubmit — pre-flight + fire.
+  //
+  // Responsibilities:
+  //   1. Count mutating/readonly tools → requestBatchApproval
+  //   2. cancel → return (no LLM call)
+  //   3. approve-all → setBatchApproval(token)
+  //   4. spawning state → beginAiBatch → lockManualEdits
+  //   5. Store batch token + unlock fn into refs for onFinish to consume
+  //   6. Fire sendMessage (async; onFinish owns cleanup)
+  //
+  // onFinish owns: dispatch loop, error state, endAiBatch, clearBatchApproval,
+  // unlock, idle state reset — always runs in its own try/finally.
   const handlePromptSubmit = useCallback(
-    async (_prompt: string) => {
-      // TODO(plan): full LLM wiring lands in a follow-up task — Task 20
-      // only owns the route mount points and FSM scaffolding. Here we walk
-      // the state machine and the batch / lock so the wiring contract
-      // (indicator + banner light up while a "session" runs) is honoured.
-      // Discard the prompt — the follow-up task will read it; this keeps
-      // the parameter named (not just an underscore) for future readers.
-      void _prompt
-      setOrchestratorState('spawning')
-      const token = orchestrator.beginAiBatch()
-      const unlock = orchestrator.lockManualEdits()
-      try {
-        setOrchestratorState('drawing')
-        // Yield once so React commits the 'drawing' state before we
-        // immediately end the (no-op) batch. This keeps the FSM observable
-        // for tests that toggle in / out of the batch state.
-        await Promise.resolve()
-      } catch (err) {
-        setOrchestratorState('error')
-        toast.error(t('errors.aiPromptFailed', { defaultValue: 'AI prompt failed' }), {
-          description: err instanceof Error ? err.message : String(err),
-        })
-        throw err
-      } finally {
-        try {
-          unlock()
-        } catch {
-          /* idempotent */
-        }
-        try {
-          orchestrator.endAiBatch(token)
-        } catch {
-          /* fail-closed in orchestrator already */
-        }
-        // Only return to idle if we did not transition to error.
-        setOrchestratorState((prev) => (prev === 'error' ? 'error' : 'idle'))
+    async (prompt: string) => {
+      console.log('[CANVAS] handlePromptSubmit fired with prompt:', prompt)
+      // Step 1: Count tools for the approval preview.
+      const mutating = EXCALIDRAW_MUTATING_TOOLS.size
+      const readonly = EXCALIDRAW_READONLY_TOOLS.size
+
+      // Step 2: Request bulk-batch approval before touching the LLM.
+      const choice = await useToolApproval
+        .getState()
+        .requestBatchApproval(canvas.id, { mutating, readonly })
+
+      // Step 3: User cancelled — return without starting anything.
+      if (choice === 'cancel') {
+        return
       }
+
+      // Step 4: approve-all → set batch approval token.
+      if (choice === 'approve-all') {
+        orchestrator.setBatchApproval(createBatchApprovalToken())
+      }
+
+      // Step 5: Begin batch session and store refs for onFinish.
+      setOrchestratorState('spawning')
+      batchTokenRef.current = orchestrator.beginAiBatch()
+      unlockRef.current = orchestrator.lockManualEdits()
+
+      // Step 6: Reset per-session state.
+      toolCallAbortController.current = new AbortController()
+      sessionData.current = { tools: [] }
+      setProgress(undefined)
+      setLastBatchError(null)
+      setOrchestratorState('drawing')
+
+      // Step 7: Fire — onFinish will dispatch tools and clean up.
+      sendMessage(prompt)
+      console.log('[CANVAS] sendMessage called, waiting for LLM...')
     },
-    [orchestrator, t],
+    [canvas.id, orchestrator, sendMessage],
   )
+
+  // stop callback: abort in-flight loop + stop LLM stream.
+  const handleStop = useCallback(() => {
+    toolCallAbortController.current?.abort()
+    stop()
+  }, [stop])
+
+  // ---- T9: Error banner callbacks -----------------------------------------
+
+  // handleRetry: re-run dispatch loop from errorState.retryFromIndex over the
+  // SAME sessionData.tools — no new LLM call. Clears errorState on start.
+  const handleRetry = useCallback(async () => {
+    if (!errorState) return
+
+    const tools = sessionData.current.tools
+    const retryFrom = errorState.retryFromIndex
+
+    // Clear banner immediately so user sees feedback.
+    setErrorState(null)
+    setOrchestratorState('drawing')
+
+    // Fresh AbortController for the retry loop.
+    toolCallAbortController.current = new AbortController()
+    const signal = toolCallAbortController.current.signal
+
+    try {
+      for (let i = retryFrom; i < tools.length; i++) {
+        if (signal.aborted) break
+
+        const call = tools[i]
+        const result: McpToolResult = await orchestrator.dispatchToolCall(call)
+        await applyMutationsToCanvas(result, orchestrator, { signal })
+
+        setProgress({ current: i + 1, total: tools.length })
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      setOrchestratorState('error')
+      setLastBatchError(error)
+      setErrorState({
+        message: error.message,
+        canRetry: true,
+        retryFromIndex: retryFrom,
+      })
+      toast.error(t('errors.aiPromptFailed', { defaultValue: 'AI prompt failed' }), {
+        description: error.message,
+      })
+    } finally {
+      setOrchestratorState((prev) => (prev === 'error' ? 'error' : 'idle'))
+    }
+  }, [errorState, orchestrator, t])
+
+  // handleDismissError: clear the error banner and close the batch cleanly.
+  // Partial elements drawn before the error are preserved.
+  const handleDismissError = useCallback(() => {
+    setErrorState(null)
+    // Close batch lifecycle cleanly — mirrors the finally block in onFinish.
+    const batchToken = batchTokenRef.current
+    const unlock = unlockRef.current
+    try { unlock?.() } catch { /* idempotent */ }
+    if (batchToken !== null) {
+      try { orchestrator.endAiBatch(batchToken) } catch { /* fail-closed */ }
+    }
+    orchestrator.clearBatchApproval()
+    batchTokenRef.current = null
+    unlockRef.current = null
+    setOrchestratorState('idle')
+  }, [orchestrator])
 
   // ---- Live scene reader --------------------------------------------------
   /**
@@ -603,14 +872,25 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
     },
   })
 
-  // Esc → back to canvas list. Plain `window` listener (not the shared hook)
-  // because:
-  //   1. The shared hook always calls `preventDefault()`, which would swallow
+  // Esc has two behaviours depending on whether a batch is in flight:
+  //
+  //   1. Batch active (orchestratorState !== 'idle'):
+  //      Abort the in-flight dispatch loop + stop the LLM stream.
+  //      stopPropagation() so the event does NOT reach Excalidraw or the
+  //      navigation branch below.
+  //      We do NOT call preventDefault() here — Esc should still close any
+  //      open Excalidraw tool popover if focus is inside the editor, but
+  //      that case is already guarded by the input/excalidraw checks below.
+  //
+  //   2. Batch idle:
+  //      Original behaviour — navigate back to the canvas list, unless focus
+  //      is inside an editable element or the Excalidraw editor itself.
+  //
+  // Plain `window` listener (not useKeyboardShortcut) because:
+  //   a. useKeyboardShortcut always calls preventDefault(), which would swallow
   //      Esc keystrokes Excalidraw uses to deselect tools / exit edit mode.
-  //   2. We need to bail when the active element is inside the editor or any
-  //      input — Esc inside a dialog should close the dialog, not navigate.
-  // The auto-save hook's unmount effect will flush any pending write before
-  // navigation completes, so unsaved changes survive the back-navigation.
+  //   b. We need target-aware logic to bail when the active element is inside
+  //      the editor or any input.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
@@ -619,7 +899,24 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
       const target = e.target as HTMLElement | null
       const active = document.activeElement as HTMLElement | null
 
-      // Skip when typing — let the native handler do its thing.
+      // Skip when the target is a native input — let the browser / Excalidraw
+      // handle Esc natively (close picker, deselect, etc.).
+      const isNativeInput =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement
+
+      if (isNativeInput) return
+
+      // If a batch is in flight: abort it and stop propagation so the
+      // navigation branch below is never reached.
+      if (orchestratorState !== 'idle') {
+        handleStop()
+        e.stopPropagation()
+        return
+      }
+
+      // Idle path — navigate back unless focus is inside an editable or
+      // inside Excalidraw (where its own Esc binding should take over).
       const editable =
         active &&
         (active.tagName === 'INPUT' ||
@@ -629,8 +926,7 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
       if (editable) return
 
       // Skip when focus is inside Excalidraw — its own Esc binding handles
-      // tool deselect / edit-mode exit. The Excalidraw container exposes a
-      // `.excalidraw` class on its outer element.
+      // tool deselect / edit-mode exit.
       if (target?.closest?.('.excalidraw')) return
       if (active?.closest?.('.excalidraw')) return
 
@@ -639,7 +935,7 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [navigate])
+  }, [navigate, orchestratorState, handleStop])
 
   // ---- Rename submit ------------------------------------------------------
 
@@ -694,9 +990,16 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
         />
         {isExcalidrawActive && (
           <>
-            <CanvasAiIndicator state={orchestratorState} />
+            <CanvasAiIndicator state={orchestratorState} progress={progress} />
             <CanvasManualEditLockBanner isLocked={isManualEditLocked} />
           </>
+        )}
+        {errorState !== null && (
+          <CanvasErrorBanner
+            error={errorState}
+            onRetry={handleRetry}
+            onDismiss={handleDismissError}
+          />
         )}
       </div>
       {isExcalidrawActive && (
@@ -704,6 +1007,14 @@ function CanvasDetail({ canvas }: CanvasDetailProps) {
           canvasId={canvas.id}
           isSubmitting={orchestratorState !== 'idle'}
           onSubmit={handlePromptSubmit}
+          onStop={handleStop}
+          modelPicker={
+            <CanvasModelPicker
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              disabled={orchestratorState !== 'idle'}
+            />
+          }
         />
       )}
 

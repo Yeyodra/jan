@@ -564,6 +564,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    *  model-side capability handling becomes the user's responsibility.
    *  Defaults to undefined → existing strip behavior preserved. */
   private forceSendAllParts?: boolean
+  /** When set, these tools are used verbatim and the MCP/RAG service path is
+   *  skipped entirely. Used by canvas sessions where tools come from the
+   *  curated mcp_excalidraw allow-list rather than the global MCP service. */
+  private fixedTools: Record<string, Tool> | null = null
 
   constructor(
     systemMessage?: string,
@@ -581,6 +585,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     this.forceSendAllParts = options?.forceSendAllParts
     this.serviceHub = useServiceStore.getState().serviceHub
     // Tools will be loaded when updateRagToolsAvailability is called with model capabilities
+  }
+
+  /**
+   * Pin a static tool set on this transport instance. Once called,
+   * `refreshTools()` always uses these tools and skips the MCP/RAG service
+   * path. Intended for canvas sessions where tool definitions come from
+   * `getExcalidrawCuratedToolDefinitions()` rather than the global MCP service.
+   */
+  setFixedTools(tools: Record<string, Tool>): void {
+    this.fixedTools = tools
+    this.tools = tools
   }
 
   setLastUserMessage(message: string): void {
@@ -639,6 +654,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * @private
    */
   async refreshTools(abortSignal?: AbortSignal) {
+    // Canvas sessions pin a static tool set — skip MCP/RAG service lookup.
+    if (this.fixedTools !== null) {
+      this.tools = this.fixedTools
+      return
+    }
+
     if (!this.serviceHub) {
       this.tools = {}
       return
