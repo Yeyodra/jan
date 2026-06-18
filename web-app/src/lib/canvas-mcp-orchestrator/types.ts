@@ -76,6 +76,8 @@ export type OrchestratorState =
 export type McpToolCall = {
   name: string
   arguments: Record<string, unknown>
+  /** AI SDK toolCallId — required for feeding results back via addToolOutput */
+  toolCallId?: string
 }
 
 /**

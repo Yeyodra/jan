@@ -57,6 +57,7 @@ import {
   requiresApproval,
 } from './curated-tools'
 import type { McpToolCall, McpToolResult } from './types'
+import type { BatchApprovalToken } from './approval'
 
 // ---------------------------------------------------------------------------
 // Structural DI contracts (no concrete imports)
@@ -145,6 +146,22 @@ export type DispatchDeps = {
   telemetry?: DispatchTelemetry
 }
 
+/**
+ * Per-call options for `dispatchExcalidrawTool`. Optional second argument;
+ * omitting it preserves the existing per-tool approval modal behaviour.
+ */
+export type DispatchOptions = {
+  /**
+   * When present, mutating tools bypass the per-tool approval modal for this
+   * call. Issued by `CanvasMcpOrchestrator.setBatchApproval(token)` so that
+   * canvas prompts can pre-approve all mutating calls at once.
+   *
+   * BLOCKED tools are NEVER bypassed — Gate 1 still runs first.
+   * READONLY tools are unaffected — they already auto-approve.
+   */
+  batchApprovalToken?: BatchApprovalToken
+}
+
 // ---------------------------------------------------------------------------
 // Error message constants (single source of truth for tests + production)
 // ---------------------------------------------------------------------------
@@ -161,11 +178,17 @@ export const ERR_GENERIC_TOOL_ERROR = 'tool returned an error'
 /**
  * Dispatch a curated mcp_excalidraw tool call. Never throws.
  *
+ * @param call    - The MCP tool invocation to dispatch.
+ * @param deps    - Injected dependencies (transport, approval gate, logger, telemetry).
+ * @param options - Optional per-call options. When `batchApprovalToken` is
+ *                  present, mutating tools skip the per-tool approval modal.
+ *
  * @see file header for the gate ordering and rationale.
  */
 export async function dispatchExcalidrawTool(
   call: McpToolCall,
   deps: DispatchDeps,
+  options?: DispatchOptions,
 ): Promise<McpToolResult> {
   // -------------------------------------------------------------------------
   // Gate 1 — curated allow-list
@@ -181,33 +204,44 @@ export async function dispatchExcalidrawTool(
   // than `!requiresApproval(...)` so the bypass is auditable in code review.
   const isReadonly = EXCALIDRAW_READONLY_TOOLS.has(call.name)
   if (!isReadonly && requiresApproval(call.name)) {
-    if (!deps.approvalGate) {
-      // Fail-closed: a mutating tool with no gate is an installation bug.
-      // Surface it loudly via logger + telemetry; deny the call.
-      deps.logger?.warn?.(
-        'dispatchExcalidrawTool: mutating tool reached dispatch without an approval gate; denying',
-        { toolName: call.name },
-      )
-      deps.telemetry?.increment('dispatch.approval_gate_missing')
-      return { error: ERR_GATE_MISSING }
-    }
+    // Bulk-batch pre-approval: when a valid token is present, skip the
+    // per-tool modal entirely and emit a telemetry event so the batch path
+    // is traceable in analytics.
+    if (options?.batchApprovalToken !== undefined) {
+      deps.telemetry?.increment('batch.bulk_approved')
+      // Fall through to Gate 3 — transport.
+    } else {
+      // Per-call approval path (existing behavior).
+      deps.telemetry?.increment('batch.per_call_approved')
 
-    let approved: boolean
-    try {
-      approved = await deps.approvalGate(
-        call.name,
-        deps.threadId,
-        call.arguments,
-      )
-    } catch (err) {
-      // The gate itself threw. Treat as transport-style failure: never let
-      // it escape, surface as an error envelope to the LLM.
-      deps.telemetry?.increment('dispatch.approval_gate_threw')
-      return { error: errorMessage(err) }
-    }
-    if (!approved) {
-      deps.telemetry?.increment('dispatch.denied')
-      return { error: ERR_USER_DENIED }
+      if (!deps.approvalGate) {
+        // Fail-closed: a mutating tool with no gate is an installation bug.
+        // Surface it loudly via logger + telemetry; deny the call.
+        deps.logger?.warn?.(
+          'dispatchExcalidrawTool: mutating tool reached dispatch without an approval gate; denying',
+          { toolName: call.name },
+        )
+        deps.telemetry?.increment('dispatch.approval_gate_missing')
+        return { error: ERR_GATE_MISSING }
+      }
+
+      let approved: boolean
+      try {
+        approved = await deps.approvalGate(
+          call.name,
+          deps.threadId,
+          call.arguments,
+        )
+      } catch (err) {
+        // The gate itself threw. Treat as transport-style failure: never let
+        // it escape, surface as an error envelope to the LLM.
+        deps.telemetry?.increment('dispatch.approval_gate_threw')
+        return { error: errorMessage(err) }
+      }
+      if (!approved) {
+        deps.telemetry?.increment('dispatch.denied')
+        return { error: ERR_USER_DENIED }
+      }
     }
   }
 

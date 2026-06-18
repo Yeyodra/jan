@@ -83,6 +83,9 @@ import {
   type ApprovalGateFn,
   type DispatchMcpClientLike,
 } from './dispatch'
+import {
+  type BatchApprovalToken,
+} from './approval'
 import { createIdTranslator, type IdTranslator } from './id-translation'
 import { translateMcpToolResult } from './result-translator'
 import {
@@ -370,6 +373,17 @@ export class CanvasMcpOrchestrator {
    */
   protected readonly lock: LockController
 
+  /**
+   * Active bulk-batch approval token. When set, `dispatchToolCall` skips the
+   * per-tool approval modal for mutating tools. Cleared automatically by
+   * `endAiBatch` and explicitly by `clearBatchApproval()`.
+   *
+   * Private — consumers interact via `setBatchApproval` / `clearBatchApproval`
+   * instance arrows (NOT prototype methods so the 11-method self-check stays
+   * intact).
+   */
+  private batchApprovalToken: BatchApprovalToken | null = null
+
   constructor(deps: CanvasMcpOrchestratorDeps) {
     this.deps = deps
     this.telemetry = deps.telemetry ?? NoopTelemetry
@@ -378,9 +392,12 @@ export class CanvasMcpOrchestrator {
       generateId: deps.generateId ?? defaultGenerateId,
     })
     this.batch = createBatchController({
-      // `unknown` at the deps slot, structurally narrowed here. Preserves
-      // the no-Excalidraw-import-at-load invariant (the cast is type-only).
-      excalidrawAPI: deps.excalidrawAPI as ExcalidrawApiLike | undefined,
+      // Pass a getter so batch.ts reads `this.deps.excalidrawAPI` live at
+      // call time. Excalidraw mounts AFTER construction; the route's
+      // useEffect patches `this.deps.excalidrawAPI` once the API is ready.
+      // A value captured here would always be `undefined` (stale reference).
+      excalidrawAPI: () =>
+        this.deps.excalidrawAPI as ExcalidrawApiLike | undefined,
       logger: deps.logger,
       telemetry: this.telemetry,
       generateBatchToken: createBatchToken,
@@ -437,15 +454,23 @@ export class CanvasMcpOrchestrator {
    * error) are surfaced as `{ error: '...' }` envelopes.
    */
   async dispatchToolCall(call: McpToolCall): Promise<McpToolResult> {
-    return dispatchExcalidrawTool(call, {
-      mcpClient: this.deps.mcpClient as DispatchMcpClientLike,
-      approvalGate: this.deps.approvalGate,
-      // Threading: prefer the live setter-updated value over the original
-      // deps slot so `setThreadId(...)` after construction takes effect.
-      threadId: this.threadId ?? '',
-      logger: this.deps.logger,
-      telemetry: this.telemetry,
-    })
+    return dispatchExcalidrawTool(
+      call,
+      {
+        mcpClient: this.deps.mcpClient as DispatchMcpClientLike,
+        approvalGate: this.deps.approvalGate,
+        // Threading: prefer the live setter-updated value over the original
+        // deps slot so `setThreadId(...)` after construction takes effect.
+        threadId: this.threadId ?? '',
+        logger: this.deps.logger,
+        telemetry: this.telemetry,
+      },
+      // Thread the active bulk-approval token (if any) so mutating tools
+      // can bypass the per-tool modal when a batch pre-approval is in flight.
+      this.batchApprovalToken !== null
+        ? { batchApprovalToken: this.batchApprovalToken }
+        : undefined,
+    )
   }
 
   // NOTE: thread id mutation lives on `setThreadId` (instance arrow,
@@ -462,6 +487,37 @@ export class CanvasMcpOrchestrator {
    */
   setThreadId: (threadId: string) => void = (threadId) => {
     this.threadId = threadId
+  }
+
+  /**
+   * Pre-approve all mutating tool calls for the current batch. When set,
+   * `dispatchToolCall` skips the per-tool approval modal for mutating tools
+   * and emits `batch.bulk_approved` telemetry instead of showing the modal.
+   *
+   * BLOCKED tools are still always rejected (Gate 1 runs before Gate 2).
+   * READONLY tools are unaffected (they already auto-approve).
+   *
+   * Defined as an instance arrow (not a prototype method) so it does NOT
+   * pollute the prototype and break the "exactly the 11 responsibility
+   * methods" reflection test in `index.test.ts` — same pattern as
+   * `setThreadId` (T15).
+   */
+  setBatchApproval: (token: BatchApprovalToken) => void = (token) => {
+    this.batchApprovalToken = token
+  }
+
+  /**
+   * Clear the bulk-batch approval token. After this call, `dispatchToolCall`
+   * reverts to per-tool approval modal behavior for mutating tools.
+   *
+   * Called automatically by `endAiBatch` (plan §T5a) so the token cannot
+   * survive a batch boundary. Canvas prompts that want approval for the next
+   * batch must call `setBatchApproval(createBatchApprovalToken())` again.
+   *
+   * Defined as an instance arrow for the same reason as `setBatchApproval`.
+   */
+  clearBatchApproval: () => void = () => {
+    this.batchApprovalToken = null
   }
 
   // -------------------------------------------------------------------------
@@ -568,6 +624,10 @@ export class CanvasMcpOrchestrator {
     // this is safe even when no manual-edit lock was acquired during the
     // batch (e.g. a programmatic batch with no UI lock).
     this.lock.forceUnlock()
+    // T5a: clear bulk-approval token so it cannot survive a batch boundary.
+    // Canvas prompts that want approval for the next batch must call
+    // `setBatchApproval(createBatchApprovalToken())` again.
+    this.clearBatchApproval()
   }
 
   /**
