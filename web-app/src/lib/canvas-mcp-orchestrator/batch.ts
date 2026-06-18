@@ -128,10 +128,21 @@ export type BatchControllerDeps = {
   /**
    * Excalidraw imperative API. When `undefined`, all batch operations are
    * fail-closed no-ops + log a warning + emit telemetry — consistent with
-   * the T15 missing-gate semantics. The orchestrator wires this in once
-   * the renderer mounts; tests omit it to assert fail-closed behaviour.
+   * the T15 missing-gate semantics.
+   *
+   * Accepts EITHER a direct value (legacy / tests) OR a getter function.
+   * The orchestrator passes a getter that reads `this.deps.excalidrawAPI`
+   * live at call time — this is the late-binding path: Excalidraw mounts
+   * AFTER orchestrator construction, so we cannot capture the API value
+   * at factory time. The route's `useEffect` patches `deps.excalidrawAPI`
+   * once Excalidraw is ready; the getter sees that update transparently.
+   *
+   * Tests can pass either form.
    */
-  excalidrawAPI: ExcalidrawApiLike | undefined
+  excalidrawAPI:
+    | ExcalidrawApiLike
+    | undefined
+    | (() => ExcalidrawApiLike | undefined)
   /** Optional logger. Warnings on nested-begin / mismatched-end / api-missing. */
   logger?: BatchLogger
   /** Optional telemetry sink. Counters under `batch.*`. */
@@ -196,7 +207,7 @@ export type BatchController = {
 export function createBatchController(
   deps: BatchControllerDeps,
 ): BatchController {
-  const { excalidrawAPI, logger, telemetry, generateBatchToken } = deps
+  const { logger, telemetry, generateBatchToken } = deps
 
   // ----- closure state ------------------------------------------------------
   let activeToken: BatchToken | null = null
@@ -209,6 +220,16 @@ export function createBatchController(
   const warn = (msg: string, meta?: Record<string, unknown>): void => {
     logger?.warn?.(msg, meta)
   }
+
+  /**
+   * Resolve the excalidrawAPI from deps — supports both the direct-value
+   * form (legacy / tests) and the getter form (live late-binding path used
+   * by the orchestrator).
+   */
+  const getExcalidrawAPI = (): ExcalidrawApiLike | undefined =>
+    typeof deps.excalidrawAPI === 'function'
+      ? deps.excalidrawAPI()
+      : deps.excalidrawAPI
 
   /**
    * Reset to idle state. Always safe to call; used after end + forceEnd
@@ -226,13 +247,14 @@ export function createBatchController(
   const commitImmediately = (
     elements: ExcalidrawElementLike[],
   ): void => {
-    if (!excalidrawAPI) {
+    const api = getExcalidrawAPI()
+    if (!api) {
       warn('canvas-mcp-orchestrator: batch commit skipped — no excalidrawAPI')
       tally('batch.api_missing')
       return
     }
     try {
-      excalidrawAPI.updateScene({
+      api.updateScene({
         elements,
         captureUpdate: CAPTURE_UPDATE.IMMEDIATELY,
       })
@@ -246,7 +268,7 @@ export function createBatchController(
 
   // ----- public methods -----------------------------------------------------
   const begin: BatchController['begin'] = () => {
-    if (!excalidrawAPI) {
+    if (!getExcalidrawAPI()) {
       warn(
         'canvas-mcp-orchestrator: beginAiBatch called without excalidrawAPI; batch ops will be no-ops',
       )
@@ -278,7 +300,8 @@ export function createBatchController(
       tally('batch.apply_outside_batch')
       return
     }
-    if (!excalidrawAPI) {
+    const api = getExcalidrawAPI()
+    if (!api) {
       // Already warned at begin-time; emit telemetry but don't spam warnings.
       tally('batch.api_missing')
       // Still track the intended state so end() can dump it.
@@ -286,7 +309,7 @@ export function createBatchController(
       return
     }
     try {
-      excalidrawAPI.updateScene({
+      api.updateScene({
         elements,
         captureUpdate: CAPTURE_UPDATE.NEVER,
       })
