@@ -316,7 +316,7 @@ export function MasterPromptInput({
   const openDocumentPicker = useCallback(async () => {
     // Tauri dialog → falls back gracefully when not in a desktop shell
     // (most likely in the browser-only test harness).
-    let dialogService: ReturnType<typeof getServiceHub>['dialog'] | null = null
+    let dialogService: ReturnType<ReturnType<typeof getServiceHub>['dialog']> | null = null
     try {
       dialogService = getServiceHub().dialog?.() ?? null
     } catch {
