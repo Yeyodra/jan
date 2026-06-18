@@ -2,6 +2,9 @@ import {
   CustomChatTransport,
 } from '@/lib/custom-chat-transport'
 import {
+  type Tool,
+} from 'ai'
+import {
   Chat,
   type UIMessage,
   type UseChatOptions,
@@ -119,6 +122,11 @@ export function useChat(
     transportRef.current?.setContinueFromContent(content)
   }, [])
 
+  // Expose method to pin a static tool set (used by canvas sessions)
+  const setFixedTools = useCallback((tools: Record<string, Tool>) => {
+    transportRef.current?.setFixedTools(tools)
+  }, [])
+
   // Expose method to update RAG tools availability
   const updateRagToolsAvailability = useCallback(
     async (
@@ -141,5 +149,6 @@ export function useChat(
     ...chatResult,
     updateRagToolsAvailability,
     setContinueFromContent,
+    setFixedTools,
   }
 }

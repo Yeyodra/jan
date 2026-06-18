@@ -13,8 +13,75 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 
 export default function ToolApproval() {
   const { t } = useTranslation()
-  const { isModalOpen, modalProps, setModalOpen } = useToolApproval()
+  const {
+    isModalOpen,
+    modalProps,
+    setModalOpen,
+    batchApprovalRequest,
+    resolveBatchApproval,
+  } = useToolApproval()
 
+  // --- Bulk/batch variant ---
+  if (batchApprovalRequest) {
+    const { mutating, readonly } = batchApprovalRequest
+
+    return (
+      <Dialog open onOpenChange={() => resolveBatchApproval('cancel')}>
+        <DialogContent showCloseButton={false}>
+          <div data-testid="tool-approval-bulk-modal">
+            <DialogHeader>
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 text-muted-foreground">
+                  <AlertTriangle className="size-4" />
+                </div>
+                <div>
+                  <DialogTitle>AI is about to draw on canvas</DialogTitle>
+                  <DialogDescription className="mt-1 text-muted-foreground">
+                    It will make {mutating} mutating call(s) and {readonly} read-only call(s).
+                    <br />
+                    How would you like to handle approvals?
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between mt-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="tool-approval-bulk-cancel"
+                onClick={() => resolveBatchApproval('cancel')}
+                className="flex-1 text-right sm:flex-none"
+              >
+                Cancel
+              </Button>
+              <div className="flex flex-col sm:flex-row gap-2 items-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  data-testid="tool-approval-bulk-per-call"
+                  onClick={() => resolveBatchApproval('per-call')}
+                >
+                  Per-call approval
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  data-testid="tool-approval-bulk-approve-all"
+                  onClick={() => resolveBatchApproval('approve-all')}
+                  autoFocus
+                >
+                  Approve all for this prompt
+                </Button>
+              </div>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  // --- Per-call variant (unchanged) ---
   if (!modalProps) {
     return null
   }

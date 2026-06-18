@@ -19,12 +19,22 @@ export type PendingApproval = {
 
 export type ApprovalDecision = 'allow-once' | 'allow-always' | 'deny'
 
+export type BatchApprovalChoice = 'approve-all' | 'per-call' | 'cancel'
+
+export type BatchApprovalRequest = {
+  canvasId: string
+  mutating: number
+  readonly: number
+  resolve: (v: BatchApprovalChoice) => void
+}
+
 type ToolApprovalState = {
   approvedTools: Record<string, string[]>
   allowAllMCPPermissions: boolean
   isModalOpen: boolean
   modalProps: ToolApprovalModalProps | null
   pending: Record<string, PendingApproval>
+  batchApprovalRequest: BatchApprovalRequest | null
 
   approveToolForThread: (threadId: string, toolName: string) => void
   isToolApproved: (threadId: string, toolName: string) => boolean
@@ -35,6 +45,8 @@ type ToolApprovalState = {
   closeModal: () => void
   setModalOpen: (open: boolean) => void
   setAllowAllMCPPermissions: (allow: boolean) => void
+  requestBatchApproval: (canvasId: string, toolPreview: { mutating: number; readonly: number }) => Promise<BatchApprovalChoice>
+  resolveBatchApproval: (choice: BatchApprovalChoice) => void
 }
 
 export const useToolApproval = create<ToolApprovalState>()(
@@ -45,6 +57,7 @@ export const useToolApproval = create<ToolApprovalState>()(
       isModalOpen: false,
       modalProps: null,
       pending: {},
+      batchApprovalRequest: null,
 
       approveToolForThread: (threadId: string, toolName: string) => {
         set((state) => ({
@@ -156,6 +169,26 @@ export const useToolApproval = create<ToolApprovalState>()(
 
       setAllowAllMCPPermissions: (allow: boolean) => {
         set({ allowAllMCPPermissions: allow })
+      },
+
+      requestBatchApproval: (canvasId, toolPreview) => {
+        return new Promise<BatchApprovalChoice>((resolve) => {
+          set({
+            batchApprovalRequest: {
+              canvasId,
+              mutating: toolPreview.mutating,
+              readonly: toolPreview.readonly,
+              resolve,
+            },
+          })
+        })
+      },
+
+      resolveBatchApproval: (choice) => {
+        const req = get().batchApprovalRequest
+        if (!req) return
+        set({ batchApprovalRequest: null })
+        req.resolve(choice)
       },
     }),
     {
