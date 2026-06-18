@@ -28,6 +28,8 @@ describe('useToolApproval', () => {
       allowAllMCPPermissions: false,
       isModalOpen: false,
       modalProps: null,
+      pending: {},
+      batchApprovalRequest: null,
     })
   })
 
@@ -343,6 +345,132 @@ describe('useToolApproval', () => {
 
       expect(result2.current.approvedTools['thread-1']).toContain('tool-a')
       expect(result2.current.allowAllMCPPermissions).toBe(true)
+    })
+  })
+
+  describe('requestBatchApproval', () => {
+    beforeEach(() => {
+      useToolApproval.setState({
+        batchApprovalRequest: null,
+        pending: {},
+      })
+    })
+
+    it('should expose requestBatchApproval and resolveBatchApproval as functions', () => {
+      const { result } = renderHook(() => useToolApproval())
+      expect(typeof result.current.requestBatchApproval).toBe('function')
+      expect(typeof result.current.resolveBatchApproval).toBe('function')
+    })
+
+    it('should set batchApprovalRequest in store when called', () => {
+      const { result } = renderHook(() => useToolApproval())
+
+      act(() => {
+        result.current.requestBatchApproval('canvas-1', { mutating: 3, readonly: 2 })
+      })
+
+      expect(result.current.batchApprovalRequest).not.toBe(null)
+      expect(result.current.batchApprovalRequest?.canvasId).toBe('canvas-1')
+      expect(result.current.batchApprovalRequest?.mutating).toBe(3)
+      expect(result.current.batchApprovalRequest?.readonly).toBe(2)
+      expect(typeof result.current.batchApprovalRequest?.resolve).toBe('function')
+    })
+
+    it('should resolve with "approve-all" when resolveBatchApproval called with approve-all', async () => {
+      const { result } = renderHook(() => useToolApproval())
+
+      let batchPromise: Promise<'approve-all' | 'per-call' | 'cancel'>
+      act(() => {
+        batchPromise = result.current.requestBatchApproval('canvas-1', { mutating: 2, readonly: 1 })
+      })
+
+      act(() => {
+        result.current.resolveBatchApproval('approve-all')
+      })
+
+      const choice = await batchPromise!
+      expect(choice).toBe('approve-all')
+      expect(result.current.batchApprovalRequest).toBe(null)
+    })
+
+    it('should resolve with "per-call" when resolveBatchApproval called with per-call', async () => {
+      const { result } = renderHook(() => useToolApproval())
+
+      let batchPromise: Promise<'approve-all' | 'per-call' | 'cancel'>
+      act(() => {
+        batchPromise = result.current.requestBatchApproval('canvas-1', { mutating: 2, readonly: 1 })
+      })
+
+      act(() => {
+        result.current.resolveBatchApproval('per-call')
+      })
+
+      const choice = await batchPromise!
+      expect(choice).toBe('per-call')
+      expect(result.current.batchApprovalRequest).toBe(null)
+    })
+
+    it('should resolve with "cancel" when resolveBatchApproval called with cancel', async () => {
+      const { result } = renderHook(() => useToolApproval())
+
+      let batchPromise: Promise<'approve-all' | 'per-call' | 'cancel'>
+      act(() => {
+        batchPromise = result.current.requestBatchApproval('canvas-1', { mutating: 2, readonly: 1 })
+      })
+
+      act(() => {
+        result.current.resolveBatchApproval('cancel')
+      })
+
+      const choice = await batchPromise!
+      expect(choice).toBe('cancel')
+      expect(result.current.batchApprovalRequest).toBe(null)
+    })
+
+    it('should not interfere with per-call requestApproval (both can coexist)', async () => {
+      const { result } = renderHook(() => useToolApproval())
+
+      // Start a batch approval
+      let batchPromise: Promise<'approve-all' | 'per-call' | 'cancel'>
+      act(() => {
+        batchPromise = result.current.requestBatchApproval('canvas-1', { mutating: 1, readonly: 0 })
+      })
+
+      // Also start a per-call approval
+      let perCallPromise: Promise<boolean>
+      act(() => {
+        perCallPromise = result.current.requestApproval('call-1', 'myTool', 'thread-1')
+      })
+
+      // Both are pending simultaneously
+      expect(result.current.batchApprovalRequest).not.toBe(null)
+      expect(result.current.pending['call-1']).not.toBeUndefined()
+
+      // Resolve batch
+      act(() => {
+        result.current.resolveBatchApproval('approve-all')
+      })
+      expect(await batchPromise!).toBe('approve-all')
+      expect(result.current.batchApprovalRequest).toBe(null)
+
+      // Per-call still pending
+      expect(result.current.pending['call-1']).not.toBeUndefined()
+
+      // Resolve per-call
+      act(() => {
+        result.current.resolveApproval('call-1', 'allow-once')
+      })
+      expect(await perCallPromise!).toBe(true)
+      expect(result.current.pending['call-1']).toBeUndefined()
+    })
+
+    it('should do nothing when resolveBatchApproval called with no pending request', () => {
+      const { result } = renderHook(() => useToolApproval())
+      // Should not throw
+      act(() => {
+        result.current.resolveBatchApproval('cancel')
+      })
+      expect(result.current.batchApprovalRequest).toBe(null)
     })
   })
 

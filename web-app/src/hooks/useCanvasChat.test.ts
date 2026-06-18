@@ -12,6 +12,8 @@ const mockStop = vi.fn()
 let mockStatus = 'ready'
 let mockError: Error | null = null
 
+const mockSetFixedTools = vi.fn()
+
 vi.mock('@/hooks/use-chat', () => ({
   useChat: vi.fn(() => ({
     sendMessage: mockSendMessage,
@@ -21,6 +23,7 @@ vi.mock('@/hooks/use-chat', () => ({
     messages: [],
     updateRagToolsAvailability: vi.fn(),
     setContinueFromContent: vi.fn(),
+    setFixedTools: mockSetFixedTools,
   })),
 }))
 
