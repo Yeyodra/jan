@@ -126,7 +126,7 @@ export function CanvasModelPicker({
               index > 0 && prevModel && prevModel.provider !== model.provider
 
             return (
-              <span key={model.id}>
+              <span key={`${model.provider}:${model.id}`}>
                 {showSeparator && <DropdownMenuSeparator />}
                 <DropdownMenuItem
                   data-testid={`canvas-model-picker-option-${index}`}

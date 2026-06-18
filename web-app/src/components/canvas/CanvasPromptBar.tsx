@@ -22,8 +22,8 @@
  *   - Tailwind tokens: `bg-background`, `border-input`, `text-muted-foreground`,
  *     `gap-2`, `p-2` — same scale as CanvasToolbar.
  */
-import { useCallback, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { useCallback, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { ArrowRight, Loader2, Square } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,6 +36,18 @@ export type CanvasPromptBarProps = {
   isSubmitting: boolean
   /** Fired with the trimmed prompt. Parent owns orchestrator + LLM wiring. */
   onSubmit: (prompt: string) => void | Promise<void>
+  /**
+   * When provided and `isSubmitting` is true, renders a Stop button (Square
+   * icon) in place of the Send button. Calling it aborts the in-flight batch.
+   * When absent and `isSubmitting` is true, falls back to the Loader2 spinner.
+   */
+  onStop?: () => void
+  /**
+   * Optional model picker rendered to the LEFT of the send/stop button.
+   * Injected by the parent via ReactNode slot so CanvasPromptBar stays
+   * generic and does not import CanvasModelPicker directly.
+   */
+  modelPicker?: ReactNode
   /** Optional placeholder. Defaults to "Ask AI to draw…". */
   placeholder?: string
   /** Optional outer container className for layout overrides. */
@@ -61,6 +73,8 @@ export function CanvasPromptBar({
   canvasId,
   isSubmitting,
   onSubmit,
+  onStop,
+  modelPicker,
   placeholder = 'Ask AI to draw…',
   className,
 }: CanvasPromptBarProps) {
@@ -142,20 +156,39 @@ export function CanvasPromptBar({
         className="flex-1"
       />
 
-      <Button
-        type="submit"
-        variant="default"
-        size="icon-sm"
-        disabled={sendDisabled}
-        data-testid="canvas-prompt-send"
-        aria-label={isSubmitting ? 'AI is drawing' : 'Send to AI'}
-      >
-        {isSubmitting ? (
-          <Loader2 className="text-primary-fg animate-spin" />
-        ) : (
-          <ArrowRight className="text-primary-fg" />
-        )}
-      </Button>
+      {/* Model picker slot — injected by the parent route, rendered LEFT of
+          the send/stop button. Nothing renders when the prop is omitted. */}
+      {modelPicker}
+
+      {isSubmitting && onStop ? (
+        /* Stop button — shown when a batch is in flight and parent can cancel */
+        <Button
+          type="button"
+          variant="default"
+          size="icon-sm"
+          onClick={onStop}
+          data-testid="canvas-prompt-stop"
+          aria-label="Stop AI"
+        >
+          <Square className="text-primary-fg" />
+        </Button>
+      ) : (
+        /* Send / loading button */
+        <Button
+          type="submit"
+          variant="default"
+          size="icon-sm"
+          disabled={sendDisabled}
+          data-testid="canvas-prompt-send"
+          aria-label={isSubmitting ? 'AI is drawing' : 'Send to AI'}
+        >
+          {isSubmitting ? (
+            <Loader2 className="text-primary-fg animate-spin" />
+          ) : (
+            <ArrowRight className="text-primary-fg" />
+          )}
+        </Button>
+      )}
 
       {/* Live region — announces submit state to assistive tech without
           shifting layout. Empty when idle. */}
