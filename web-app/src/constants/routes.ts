@@ -22,7 +22,12 @@ export const route = {
     https_proxy: '/settings/https-proxy',
     hardware: '/settings/hardware',
     assistant: '/settings/assistant',
-    claude_code: '/settings/claude-code',
+    LLM_code: '/settings/LLM-code',
+    tugas: '/settings/tugas',
+  },
+  tugas: {
+    index: '/tugas',
+    la: '/tugas/la',
   },
   hub: {
     index: '/hub/',

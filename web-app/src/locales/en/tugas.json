@@ -1,0 +1,84 @@
+{
+  "title": "Tugas",
+  "subtitle": "Sistem Tugas Akademik",
+  "sidebar": {
+    "navLabel": "Tugas"
+  },
+  "dashboard": {
+    "heading": "Tugas System",
+    "description": "Generator laporan praktikum, makalah, dan presentasi akademik.",
+    "laCard": {
+      "title": "LA Generator",
+      "description": "Generate laporan praktikum format Universitas Gunadarma"
+    }
+  },
+  "la": {
+    "title": "LA Generator",
+    "subtitle": "Laporan Praktikum",
+    "form": {
+      "matkul": "Mata Kuliah",
+      "modul": "Nomor Modul",
+      "tanggal": "Tanggal",
+      "materi": "Materi",
+      "ketuaAsisten": "Ketua Asisten",
+      "kodeSumber": "Kode Sumber",
+      "kodeSumberPlaceholder": "Paste kode sumber di sini...",
+      "pilihFile": "Pilih File",
+      "screenshotFolder": "Folder Screenshot Output",
+      "pilihFolder": "Pilih Folder",
+      "generate": "Generate LA",
+      "generating": "Generating..."
+    },
+    "preview": {
+      "title": "Preview",
+      "compile": "Compile PDF",
+      "compiling": "Compiling...",
+      "openPdf": "Buka PDF",
+      "noPreview": "Preview akan muncul setelah generate selesai."
+    },
+    "compile": {
+      "checking": "Memeriksa pdflatex..."
+    },
+    "editor": {
+      "title": "Raw LaTeX Editor",
+      "save": "Compile Ulang",
+      "saving": "Menyimpan...",
+      "saveError": "Gagal menyimpan",
+      "filePath": "Lokasi file"
+    },
+    "status": {
+      "idle": "Siap",
+      "generating": "Generating via LLM...",
+      "texReady": "LaTeX siap, menunggu compile",
+      "compiling": "Compiling PDF...",
+      "done": "Selesai",
+      "error": "Error"
+    },
+    "miktex": {
+      "absent": "pdflatex tidak ditemukan",
+      "installing": "Menginstall MiKTeX...",
+      "installPrompt": "pdflatex tidak terinstall. Install MiKTeX sekarang? (~200MB)",
+      "install": "Install MiKTeX",
+      "cancel": "Nanti saja"
+    },
+    "guard": {
+      "generating": "LA sedang di-generate. Yakin ingin meninggalkan halaman ini?"
+    }
+  },
+  "settings": {
+    "title": "Konfigurasi Tugas",
+    "informasiMahasiswa": "Informasi Mahasiswa",
+    "konfigurasiSemester": "Konfigurasi Semester",
+    "semester": "Semester",
+    "tahunAjaran": "Tahun Ajaran",
+    "kelas": "Kelas",
+    "nama": "Nama",
+    "npm": "NPM",
+    "basePath": "Folder Dasar",
+    "pilihFolder": "Pilih Folder",
+    "matkulLab": "Mata Kuliah Lab",
+    "ketuaAsisten": "Ketua Asisten",
+    "save": "Simpan",
+    "reset": "Reset ke Default"
+  }
+}
