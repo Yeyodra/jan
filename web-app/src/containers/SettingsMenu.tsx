@@ -16,6 +16,7 @@ import {
   IconCpu,
   IconWorld,
   IconPaperclip,
+  IconSchool,
 } from '@tabler/icons-react'
 import { useMatches, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
@@ -205,6 +206,7 @@ const SettingsMenu = () => {
       icon: IconCpu,
     },
     { title: 'common:privacy', route: route.settings.privacy, icon: IconLock },
+    { title: 'tugas:settings.title', route: route.settings.tugas, icon: IconSchool },
   ]
 
   const integrationSettings = [
@@ -214,8 +216,8 @@ const SettingsMenu = () => {
       icon: IconTopologyStar3,
     },
     {
-      title: 'common:claude_code',
-      route: route.settings.claude_code,
+      title: 'common:LLM_code',
+      route: route.settings.LLM_code,
       icon: ({ size, className }: { size?: number; className?: string }) => (
         <img src="/images/code-claude.svg" width={size} height={size} className={cn(className, 'dark:invert opacity-60')} />
       ),

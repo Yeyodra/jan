@@ -41,6 +41,10 @@ import {
   CanvasIcon,
   type CanvasIconHandle,
 } from '@/components/animated-icon/canvas'
+import {
+  TugasIcon,
+  type TugasIconHandle,
+} from '@/components/animated-icon/tugas'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 import { SearchDialog } from '@/containers/dialogs/SearchDialog'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
@@ -59,6 +63,7 @@ type AnimatedIconHandle =
   | BotIconHandle
   | CompareIconHandle
   | CanvasIconHandle
+  | TugasIconHandle
 
 type NavMainItem = {
   title: string
@@ -142,6 +147,11 @@ const getNavMainItems = (
     title: 'canvas:sidebar.navLabel',
     url: route.canvas,
     animatedIcon: CanvasIcon,
+  },
+  {
+    title: 'tugas:sidebar.navLabel',
+    url: route.tugas.index,
+    animatedIcon: TugasIcon,
   },
   {
     title: 'compare:title',

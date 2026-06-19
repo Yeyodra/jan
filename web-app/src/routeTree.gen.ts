@@ -13,9 +13,11 @@ import { Route as SystemMonitorRouteImport } from './routes/system-monitor'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as CompareRouteImport } from './routes/compare'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TugasIndexRouteImport } from './routes/tugas/index'
 import { Route as HubIndexRouteImport } from './routes/hub/index'
 import { Route as CanvasIndexRouteImport } from './routes/canvas/index'
 import { Route as ThreadsThreadIdRouteImport } from './routes/threads/$threadId'
+import { Route as SettingsTugasRouteImport } from './routes/settings/tugas'
 import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
 import { Route as SettingsPrivacyRouteImport } from './routes/settings/privacy'
 import { Route as SettingsMcpServersRouteImport } from './routes/settings/mcp-servers'
@@ -25,13 +27,14 @@ import { Route as SettingsHttpsProxyRouteImport } from './routes/settings/https-
 import { Route as SettingsHardwareRouteImport } from './routes/settings/hardware'
 import { Route as SettingsGeneralRouteImport } from './routes/settings/general'
 import { Route as SettingsExtensionsRouteImport } from './routes/settings/extensions'
-import { Route as SettingsClaudeCodeRouteImport } from './routes/settings/claude-code'
 import { Route as SettingsAttachmentsRouteImport } from './routes/settings/attachments'
 import { Route as SettingsAssistantRouteImport } from './routes/settings/assistant'
+import { Route as SettingsLLMCodeRouteImport } from './routes/settings/LLM-code'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as LocalApiServerLogsRouteImport } from './routes/local-api-server/logs'
 import { Route as HubModelIdRouteImport } from './routes/hub/$modelId'
 import { Route as CanvasCanvasIdRouteImport } from './routes/canvas/$canvasId'
+import { Route as TugasLaIndexRouteImport } from './routes/tugas/la/index'
 import { Route as SettingsProvidersIndexRouteImport } from './routes/settings/providers/index'
 import { Route as SettingsProvidersProviderNameRouteImport } from './routes/settings/providers/$providerName'
 
@@ -55,6 +58,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TugasIndexRoute = TugasIndexRouteImport.update({
+  id: '/tugas/',
+  path: '/tugas/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HubIndexRoute = HubIndexRouteImport.update({
   id: '/hub/',
   path: '/hub/',
@@ -68,6 +76,11 @@ const CanvasIndexRoute = CanvasIndexRouteImport.update({
 const ThreadsThreadIdRoute = ThreadsThreadIdRouteImport.update({
   id: '/threads/$threadId',
   path: '/threads/$threadId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsTugasRoute = SettingsTugasRouteImport.update({
+  id: '/settings/tugas',
+  path: '/settings/tugas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsShortcutsRoute = SettingsShortcutsRouteImport.update({
@@ -115,11 +128,6 @@ const SettingsExtensionsRoute = SettingsExtensionsRouteImport.update({
   path: '/settings/extensions',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsClaudeCodeRoute = SettingsClaudeCodeRouteImport.update({
-  id: '/settings/claude-code',
-  path: '/settings/claude-code',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsAttachmentsRoute = SettingsAttachmentsRouteImport.update({
   id: '/settings/attachments',
   path: '/settings/attachments',
@@ -128,6 +136,11 @@ const SettingsAttachmentsRoute = SettingsAttachmentsRouteImport.update({
 const SettingsAssistantRoute = SettingsAssistantRouteImport.update({
   id: '/settings/assistant',
   path: '/settings/assistant',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsLLMCodeRoute = SettingsLLMCodeRouteImport.update({
+  id: '/settings/LLM-code',
+  path: '/settings/LLM-code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectProjectIdRoute = ProjectProjectIdRouteImport.update({
@@ -148,6 +161,11 @@ const HubModelIdRoute = HubModelIdRouteImport.update({
 const CanvasCanvasIdRoute = CanvasCanvasIdRouteImport.update({
   id: '/canvas/$canvasId',
   path: '/canvas/$canvasId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TugasLaIndexRoute = TugasLaIndexRouteImport.update({
+  id: '/tugas/la/',
+  path: '/tugas/la/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsProvidersIndexRoute = SettingsProvidersIndexRouteImport.update({
@@ -171,9 +189,9 @@ export interface FileRoutesByFullPath {
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
+  '/settings/LLM-code': typeof SettingsLLMCodeRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
-  '/settings/claude-code': typeof SettingsClaudeCodeRoute
   '/settings/extensions': typeof SettingsExtensionsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/hardware': typeof SettingsHardwareRoute
@@ -183,11 +201,14 @@ export interface FileRoutesByFullPath {
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/privacy': typeof SettingsPrivacyRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
+  '/settings/tugas': typeof SettingsTugasRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
   '/canvas/': typeof CanvasIndexRoute
   '/hub/': typeof HubIndexRoute
+  '/tugas/': typeof TugasIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
   '/settings/providers/': typeof SettingsProvidersIndexRoute
+  '/tugas/la/': typeof TugasLaIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -198,9 +219,9 @@ export interface FileRoutesByTo {
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
+  '/settings/LLM-code': typeof SettingsLLMCodeRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
-  '/settings/claude-code': typeof SettingsClaudeCodeRoute
   '/settings/extensions': typeof SettingsExtensionsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/hardware': typeof SettingsHardwareRoute
@@ -210,11 +231,14 @@ export interface FileRoutesByTo {
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/privacy': typeof SettingsPrivacyRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
+  '/settings/tugas': typeof SettingsTugasRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
   '/canvas': typeof CanvasIndexRoute
   '/hub': typeof HubIndexRoute
+  '/tugas': typeof TugasIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
   '/settings/providers': typeof SettingsProvidersIndexRoute
+  '/tugas/la': typeof TugasLaIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -226,9 +250,9 @@ export interface FileRoutesById {
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
+  '/settings/LLM-code': typeof SettingsLLMCodeRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
-  '/settings/claude-code': typeof SettingsClaudeCodeRoute
   '/settings/extensions': typeof SettingsExtensionsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/hardware': typeof SettingsHardwareRoute
@@ -238,11 +262,14 @@ export interface FileRoutesById {
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/privacy': typeof SettingsPrivacyRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
+  '/settings/tugas': typeof SettingsTugasRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
   '/canvas/': typeof CanvasIndexRoute
   '/hub/': typeof HubIndexRoute
+  '/tugas/': typeof TugasIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
   '/settings/providers/': typeof SettingsProvidersIndexRoute
+  '/tugas/la/': typeof TugasLaIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -255,9 +282,9 @@ export interface FileRouteTypes {
     | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
+    | '/settings/LLM-code'
     | '/settings/assistant'
     | '/settings/attachments'
-    | '/settings/claude-code'
     | '/settings/extensions'
     | '/settings/general'
     | '/settings/hardware'
@@ -267,11 +294,14 @@ export interface FileRouteTypes {
     | '/settings/mcp-servers'
     | '/settings/privacy'
     | '/settings/shortcuts'
+    | '/settings/tugas'
     | '/threads/$threadId'
     | '/canvas/'
     | '/hub/'
+    | '/tugas/'
     | '/settings/providers/$providerName'
     | '/settings/providers/'
+    | '/tugas/la/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -282,9 +312,9 @@ export interface FileRouteTypes {
     | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
+    | '/settings/LLM-code'
     | '/settings/assistant'
     | '/settings/attachments'
-    | '/settings/claude-code'
     | '/settings/extensions'
     | '/settings/general'
     | '/settings/hardware'
@@ -294,11 +324,14 @@ export interface FileRouteTypes {
     | '/settings/mcp-servers'
     | '/settings/privacy'
     | '/settings/shortcuts'
+    | '/settings/tugas'
     | '/threads/$threadId'
     | '/canvas'
     | '/hub'
+    | '/tugas'
     | '/settings/providers/$providerName'
     | '/settings/providers'
+    | '/tugas/la'
   id:
     | '__root__'
     | '/'
@@ -309,9 +342,9 @@ export interface FileRouteTypes {
     | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
+    | '/settings/LLM-code'
     | '/settings/assistant'
     | '/settings/attachments'
-    | '/settings/claude-code'
     | '/settings/extensions'
     | '/settings/general'
     | '/settings/hardware'
@@ -321,11 +354,14 @@ export interface FileRouteTypes {
     | '/settings/mcp-servers'
     | '/settings/privacy'
     | '/settings/shortcuts'
+    | '/settings/tugas'
     | '/threads/$threadId'
     | '/canvas/'
     | '/hub/'
+    | '/tugas/'
     | '/settings/providers/$providerName'
     | '/settings/providers/'
+    | '/tugas/la/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -337,9 +373,9 @@ export interface RootRouteChildren {
   HubModelIdRoute: typeof HubModelIdRoute
   LocalApiServerLogsRoute: typeof LocalApiServerLogsRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRoute
+  SettingsLLMCodeRoute: typeof SettingsLLMCodeRoute
   SettingsAssistantRoute: typeof SettingsAssistantRoute
   SettingsAttachmentsRoute: typeof SettingsAttachmentsRoute
-  SettingsClaudeCodeRoute: typeof SettingsClaudeCodeRoute
   SettingsExtensionsRoute: typeof SettingsExtensionsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsHardwareRoute: typeof SettingsHardwareRoute
@@ -349,11 +385,14 @@ export interface RootRouteChildren {
   SettingsMcpServersRoute: typeof SettingsMcpServersRoute
   SettingsPrivacyRoute: typeof SettingsPrivacyRoute
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
+  SettingsTugasRoute: typeof SettingsTugasRoute
   ThreadsThreadIdRoute: typeof ThreadsThreadIdRoute
   CanvasIndexRoute: typeof CanvasIndexRoute
   HubIndexRoute: typeof HubIndexRoute
+  TugasIndexRoute: typeof TugasIndexRoute
   SettingsProvidersProviderNameRoute: typeof SettingsProvidersProviderNameRoute
   SettingsProvidersIndexRoute: typeof SettingsProvidersIndexRoute
+  TugasLaIndexRoute: typeof TugasLaIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -386,6 +425,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tugas/': {
+      id: '/tugas/'
+      path: '/tugas'
+      fullPath: '/tugas/'
+      preLoaderRoute: typeof TugasIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/hub/': {
       id: '/hub/'
       path: '/hub'
@@ -405,6 +451,13 @@ declare module '@tanstack/react-router' {
       path: '/threads/$threadId'
       fullPath: '/threads/$threadId'
       preLoaderRoute: typeof ThreadsThreadIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/tugas': {
+      id: '/settings/tugas'
+      path: '/settings/tugas'
+      fullPath: '/settings/tugas'
+      preLoaderRoute: typeof SettingsTugasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/shortcuts': {
@@ -470,13 +523,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsExtensionsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/claude-code': {
-      id: '/settings/claude-code'
-      path: '/settings/claude-code'
-      fullPath: '/settings/claude-code'
-      preLoaderRoute: typeof SettingsClaudeCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings/attachments': {
       id: '/settings/attachments'
       path: '/settings/attachments'
@@ -489,6 +535,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/assistant'
       fullPath: '/settings/assistant'
       preLoaderRoute: typeof SettingsAssistantRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/LLM-code': {
+      id: '/settings/LLM-code'
+      path: '/settings/LLM-code'
+      fullPath: '/settings/LLM-code'
+      preLoaderRoute: typeof SettingsLLMCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/project/$projectId': {
@@ -519,6 +572,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CanvasCanvasIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tugas/la/': {
+      id: '/tugas/la/'
+      path: '/tugas/la'
+      fullPath: '/tugas/la/'
+      preLoaderRoute: typeof TugasLaIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/providers/': {
       id: '/settings/providers/'
       path: '/settings/providers'
@@ -545,9 +605,9 @@ const rootRouteChildren: RootRouteChildren = {
   HubModelIdRoute: HubModelIdRoute,
   LocalApiServerLogsRoute: LocalApiServerLogsRoute,
   ProjectProjectIdRoute: ProjectProjectIdRoute,
+  SettingsLLMCodeRoute: SettingsLLMCodeRoute,
   SettingsAssistantRoute: SettingsAssistantRoute,
   SettingsAttachmentsRoute: SettingsAttachmentsRoute,
-  SettingsClaudeCodeRoute: SettingsClaudeCodeRoute,
   SettingsExtensionsRoute: SettingsExtensionsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsHardwareRoute: SettingsHardwareRoute,
@@ -557,11 +617,14 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsMcpServersRoute: SettingsMcpServersRoute,
   SettingsPrivacyRoute: SettingsPrivacyRoute,
   SettingsShortcutsRoute: SettingsShortcutsRoute,
+  SettingsTugasRoute: SettingsTugasRoute,
   ThreadsThreadIdRoute: ThreadsThreadIdRoute,
   CanvasIndexRoute: CanvasIndexRoute,
   HubIndexRoute: HubIndexRoute,
+  TugasIndexRoute: TugasIndexRoute,
   SettingsProvidersProviderNameRoute: SettingsProvidersProviderNameRoute,
   SettingsProvidersIndexRoute: SettingsProvidersIndexRoute,
+  TugasLaIndexRoute: TugasLaIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
